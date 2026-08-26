@@ -361,6 +361,35 @@ function handMetrics(lm){
     tip: lm[8],                                   // the INDEX FINGERTIP is the cursor
   };
 }
+/* HAND IDENTITY — the missing piece behind "nothing works" (2026-08-26 field frame:
+   no cursor on his raised hand, a ring parked on his shirt). MediaPipe returns hands
+   in ARBITRARY order that swaps between frames; positional assignment shreds a hand's
+   state (seen-counter, pinch, filter) on every swap, so the real hand never earns the
+   screen. Each detection now claims the slot whose last palm is NEAREST — state
+   survives, and a far-away stray can't steal a live hand's slot. */
+function assignHands(lms){
+  const out = [null, null];
+  const cand = lms.slice(0, 2);
+  const claimed = [false, false];
+  const palmPx = lm => px({ x: (lm[0].x + lm[9].x) / 2, y: (lm[0].y + lm[9].y) / 2 });
+  const order = [0, 1].filter(i => HANDS[i].present && HANDS[i].m)
+    .sort((a2, b2) => HANDS[b2].seen - HANDS[a2].seen);
+  for (const i of order){
+    const last = px(HANDS[i].m.palm);
+    let bi = -1, bd = 1e9;
+    cand.forEach((lm, k) => { if (!lm || claimed[k]) return;
+      const p = palmPx(lm), d = Math.hypot(p.x - last.x, p.y - last.y);
+      if (d < bd){ bd = d; bi = k; } });
+    if (bi >= 0 && bd < 260){ out[i] = cand[bi]; claimed[bi] = true; }
+  }
+  cand.forEach((lm, k) => { if (!lm || claimed[k]) return;
+    const slot = out[0] == null && !HANDS[0].present ? 0
+               : out[1] == null && !HANDS[1].present ? 1
+               : out[0] == null ? 0 : out[1] == null ? 1 : -1;
+    if (slot >= 0){ out[slot] = lm; claimed[k] = true; }
+  });
+  return out;
+}
 /* One Euro filter (Casiez et al.) — speed-adaptive cutoff: heavy smoothing when the
    hand is still (no jitter), light smoothing when it moves fast (no lag). This is
    what separates a floaty cursor from one that feels wired to the finger. */
@@ -1034,8 +1063,15 @@ async function startCamera(){
           pair = [pair[0].s >= pair[1].s ? pair[0] : pair[1]];
           RAW.ghost = true;
         }
+        // shirt/face phantom: a second detection that is BOTH much smaller and lower
+        // confidence than the live hand is background noise, not a second hand
+        else {
+          const [big, small] = S2(pair[0]) >= S2(pair[1]) ? [pair[0], pair[1]] : [pair[1], pair[0]];
+          if (S2(small) < S2(big) * .55 && small.s < .9){ pair = [big]; RAW.ghost = true; }
+        }
       }
-      ingestHands(pair.map(p2 => p2.lm));
+      ingestHands(assignHands(pair.map(p2 => p2.lm)));   // identity-stable slots (camera path only —
+                                                         // probe/sim stay positional by design)
     }
     requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
