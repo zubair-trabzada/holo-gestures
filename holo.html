@@ -729,7 +729,30 @@ async function startGL(){
     glScene.add(key); glScene.add(new T.AmbientLight(0x224437, 1.4));
     const mk = (geo, color, emiss) => new T.Mesh(geo, new T.MeshStandardMaterial({
       color, emissive: emiss, emissiveIntensity: .5, metalness: .72, roughness: .24 }));
+    // the hero: a J.A.R.V.I.S. arc reactor — steel housing, glowing coil ring,
+    // 8 spokes, hot core. Grab it and TWIST to spin; inertia carries it.
+    const jarvisReactor = (() => {
+      const g = new T.Group();
+      const steel = new T.MeshStandardMaterial({ color: 0x2a3440, emissive: 0x14303a,
+        emissiveIntensity: .35, metalness: .85, roughness: .28 });
+      const glow = new T.MeshStandardMaterial({ color: 0x0d3a44, emissive: 0x35e0ff,
+        emissiveIntensity: 1.1, metalness: .55, roughness: .3 });
+      g.add(new T.Mesh(new T.TorusGeometry(52, 7, 20, 72), steel));
+      g.add(new T.Mesh(new T.TorusGeometry(34, 4.5, 16, 64), glow));
+      g.add(new T.Mesh(new T.SphereGeometry(15, 24, 24), new T.MeshStandardMaterial({
+        color: 0x9feaff, emissive: 0x7df3ff, emissiveIntensity: 2.2, metalness: .1, roughness: .15 })));
+      for (let k = 0; k < 8; k++){
+        const sp = new T.Mesh(new T.BoxGeometry(16, 7, 7), steel);
+        const a2 = k / 8 * Math.PI * 2;
+        sp.position.set(Math.cos(a2) * 43, Math.sin(a2) * 43, 0);
+        sp.rotation.z = a2;
+        g.add(sp);
+      }
+      g.rotation.x = .35;                      // slight tilt so the depth reads
+      return g;
+    })();
     const objs = [
+      { title: 'J.A.R.V.I.S.', mesh: jarvisReactor },
       { title: 'TORUS CORE',  mesh: mk(new T.TorusKnotGeometry(40, 12, 130, 18), 0x1d3f36, 0x2effbe) },
       { title: 'THE REACTOR', mesh: mk(new T.TorusGeometry(44, 11, 26, 64),      0x3a2f14, 0xf0c064) },
       { title: 'THE CORE',    mesh: mk(new T.IcosahedronGeometry(48, 1),          0x16323e, 0x7de4ff) },
