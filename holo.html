@@ -33,7 +33,11 @@
   .grab  { border-color:#7dffd9 !important;
            box-shadow:0 22px 70px rgba(0,0,0,.6), 0 0 50px rgba(110,255,220,.5) !important; }
   .docked { border-color:rgba(240,200,100,.55) !important; }
-  #gl { position:fixed; inset:0; z-index:3; pointer-events:none; }
+  /* width/height 100% is LOAD-BEARING: a canvas is a REPLACED element — inset:0 does
+     NOT stretch it, it falls back to its intrinsic (2×-retina) buffer size. Without
+     this the GL layer is double-sized on any dpr=2 screen and the objects render
+     off the visible quarter (invisible on retina, perfect in dpr=1 headless). */
+  #gl { position:fixed; inset:0; width:100%; height:100%; z-index:3; pointer-events:none; }
   #hud { position:fixed; inset:0; z-index:4; pointer-events:none; }
   /* the ACTIVE ring, top-left — the status jewel */
   #ring { position:fixed; left:34px; top:70px; z-index:4; width:150px; height:150px; pointer-events:none; }
