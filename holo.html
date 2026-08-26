@@ -361,6 +361,21 @@ function handMetrics(lm){
     tip: lm[8],                                   // the INDEX FINGERTIP is the cursor
   };
 }
+/* One Euro filter (Casiez et al.) — speed-adaptive cutoff: heavy smoothing when the
+   hand is still (no jitter), light smoothing when it moves fast (no lag). This is
+   what separates a floaty cursor from one that feels wired to the finger. */
+function oneEuro(st, raw, now){
+  const f = st.oe || (st.oe = { t: now, x: raw.x, y: raw.y, dx: 0, dy: 0 });
+  let dt = (now - f.t) / 1000; if (!(dt > 0)) dt = 1/60; if (dt > .2) dt = .2;
+  f.t = now;
+  const al = (cut) => { const r = 2 * Math.PI * cut * dt; return r / (r + 1); };
+  const ad = al(1.0);
+  f.dx += ((raw.x - f.x) / dt - f.dx) * ad;
+  f.dy += ((raw.y - f.y) / dt - f.dy) * ad;
+  const a = al(1.3 + .009 * Math.hypot(f.dx, f.dy));
+  f.x += (raw.x - f.x) * a; f.y += (raw.y - f.y) * a;
+  return { x: f.x, y: f.y };
+}
 function mkHandState(){ return { present:false, seen:0, pinch:false, pinchT:0, startPalm:null,
   smooth:null, trail:[], open:false, openT:0, fist:false, lm:null, m:null, hover:null, twist:null,
   point:0, spans:[], upT:0 }; }
@@ -403,12 +418,7 @@ function ingestHands(rawHands){
     if (!lm){ if (st.present) dropHand(i); continue; }
     const raw = px(m.tip);
     st.present = true; st.seen++; st.upT = now; st.lm = lm; st.m = m;
-    // adaptive smoothing: steady hand = heavy smoothing (no jitter), fast hand = light (no lag)
-    if (!st.smooth) st.smooth = raw;
-    else { const sp = Math.hypot(raw.x - st.smooth.x, raw.y - st.smooth.y);
-      const a = Math.min(.7, .28 + sp / 130);   // calmer cursor (galaxy field lesson), flick preserved
-      st.smooth = { x: st.smooth.x + (raw.x - st.smooth.x) * a,
-                    y: st.smooth.y + (raw.y - st.smooth.y) * a }; }
+    st.smooth = oneEuro(st, raw, now);   // speed-adaptive One Euro: steady at rest, wired when fast
     const cur = st.smooth;
     st.trail.push({ ...cur, t: now }); if (st.trail.length > 10) st.trail.shift();
     st.spans.push({ s: m.span, t: now }); if (st.spans.length > 8) st.spans.shift();
@@ -904,7 +914,11 @@ function drawHud(t){
     // a cursor must EARN the screen: phantom one-frame detections (a face, a shirt
     // fold) never render — his "weird green dot" field report
     if (!st.present || !st.smooth || st.seen < 6) continue;
-    const cur = st.smooth;
+    // draw-side interpolation: samples arrive at camera rate (~30Hz) but this paints
+    // at display rate (60-120Hz) — the eased draw point is what makes it look FLUID
+    st.draw = st.draw ? { x: st.draw.x + (st.smooth.x - st.draw.x) * .5,
+                          y: st.draw.y + (st.smooth.y - st.draw.y) * .5 } : { ...st.smooth };
+    const cur = st.draw;
     const k = st.m ? Math.max(0, Math.min(1, (st.m.pinch - .2) / .5)) : 1;   // 0=closed 1=open
     const r = 9 + 20 * k;
     // soft glow halo
@@ -1005,9 +1019,23 @@ async function startCamera(){
       const hd = res.handednesses || res.handedness || [];
       RAW.n = (res.landmarks || []).length;                       // pre-filter truth for DEBUG
       RAW.scores = hd.map(h => (h && h[0] && h[0].score) ?? 1);
-      const lms = (res.landmarks || []).filter((_, i) =>
-        ((hd[i] && hd[i][0] && hd[i][0].score) ?? 1) > .8);
-      ingestHands(lms);
+      let pair = (res.landmarks || []).map((lm, i) => ({ lm, s: RAW.scores[i] ?? 1 }))
+        .filter(p2 => p2.s > .8);
+      // GHOST-HAND DEDUPE: MediaPipe often reports ONE physical hand as TWO overlapping
+      // detections, and the ghost paints a second cursor shadowing the finger (his
+      // "green things following my fingers"). Two palms closer than ~1.35 hand-spans
+      // are the same hand — keep the higher-confidence read.
+      RAW.ghost = false;
+      if (pair.length === 2){
+        const P2 = p2 => ({ x: (p2.lm[0].x + p2.lm[9].x)/2, y: (p2.lm[0].y + p2.lm[9].y)/2 });
+        const S2 = p2 => Math.hypot(p2.lm[0].x - p2.lm[9].x, p2.lm[0].y - p2.lm[9].y);
+        const dd = Math.hypot(P2(pair[0]).x - P2(pair[1]).x, P2(pair[0]).y - P2(pair[1]).y);
+        if (dd < Math.max(S2(pair[0]), S2(pair[1])) * 1.35){
+          pair = [pair[0].s >= pair[1].s ? pair[0] : pair[1]];
+          RAW.ghost = true;
+        }
+      }
+      ingestHands(pair.map(p2 => p2.lm));
     }
     requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
