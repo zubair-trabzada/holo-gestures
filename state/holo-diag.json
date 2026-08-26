@@ -1,0 +1,8 @@
+{
+  "gl": "FAIL: Error creating WebGL context.",
+  "fail": null,
+  "stage": "tracking-ready",
+  "localImportError": null,
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+  "ts": 1787775102.2297359
+}

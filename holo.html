@@ -1,0 +1,1230 @@
+<!doctype html><html><head><meta charset="utf-8"><title>HOLO — bare-hand control deck</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#05070a; font-family:-apple-system,"Segoe UI",sans-serif; }
+  /* v3 layers: the CAMERA IS THE STAGE (bright), everything floats on it */
+  #cam { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:1;
+         transform:scaleX(-1); opacity:.55; filter:saturate(.85) brightness(.95); transition:opacity .4s; }
+  #vignette { position:fixed; inset:0; z-index:2; pointer-events:none;
+         background:radial-gradient(ellipse at center, transparent 40%, rgba(4,6,9,.55) 100%); }
+  #stars { position:fixed; inset:0; z-index:2; pointer-events:none; opacity:.5; }
+  #deck { position:fixed; inset:0; z-index:3; perspective:1200px; }
+  .card { position:absolute; width:230px; min-height:110px; max-height:200px; overflow:hidden;
+          padding:14px 16px; border-radius:14px; will-change:transform;
+          background:rgba(12,18,24,.78); border:1px solid rgba(120,255,214,.25);
+          backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+          box-shadow:0 14px 44px rgba(0,0,0,.5); transition:border-color .12s, box-shadow .12s; }
+  .card h3 { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:12.5px; letter-spacing:.08em;
+             color:#a9ffe6; font-weight:600; margin-bottom:7px; text-transform:uppercase; }
+  .card p { font-size:11px; line-height:1.55; color:#c9d6d2; white-space:pre-wrap; }
+  .orb { position:absolute; width:150px; height:150px; border-radius:50%; will-change:transform;
+         display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+         background:radial-gradient(circle at 38% 32%, rgba(60,110,96,.5), rgba(10,18,22,.72) 70%);
+         border:1.5px solid rgba(125,255,217,.5); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+         box-shadow:0 10px 40px rgba(0,0,0,.5), inset 0 0 30px rgba(90,255,215,.12);
+         transition:border-color .12s, box-shadow .12s; }
+  .orb h3 { font-family:"SF Mono",ui-monospace,monospace; font-size:12px; letter-spacing:.18em;
+            color:#d9fff2; font-weight:700; }
+  .orb span { font-family:"SF Mono",ui-monospace,monospace; font-size:9px; letter-spacing:.1em; color:#8fd8c2; }
+  .orb.openf { opacity:.55; border-style:dashed; }
+  .hover { border-color:#8dffdd !important;
+           box-shadow:0 18px 60px rgba(0,0,0,.55), 0 0 34px rgba(110,255,222,.4) !important; }
+  .grab  { border-color:#7dffd9 !important;
+           box-shadow:0 22px 70px rgba(0,0,0,.6), 0 0 50px rgba(110,255,220,.5) !important; }
+  .docked { border-color:rgba(240,200,100,.55) !important; }
+  #gl { position:fixed; inset:0; z-index:3; pointer-events:none; }
+  #hud { position:fixed; inset:0; z-index:4; pointer-events:none; }
+  /* the ACTIVE ring, top-left — the status jewel */
+  #ring { position:fixed; left:34px; top:70px; z-index:4; width:150px; height:150px; pointer-events:none; }
+  #ring .r1 { position:absolute; inset:0; border-radius:50%; border:2px solid rgba(125,255,217,.65);
+              box-shadow:0 0 24px rgba(125,255,217,.25), inset 0 0 24px rgba(125,255,217,.12);
+              animation:spin 14s linear infinite; border-top-color:transparent; }
+  .card p { font-size:11px; }
+  #ring .r2 { position:absolute; inset:12px; border-radius:50%; border:1px dashed rgba(125,255,217,.4);
+              animation:spin 9s linear infinite reverse; }
+  #ring .mid { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+               justify-content:center; gap:5px; }
+  #ring .mid b { font-family:"SF Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.3em;
+               color:#eafff8; font-weight:700; }
+  #ring .mid i { font-family:"SF Mono",ui-monospace,monospace; font-size:8.5px; letter-spacing:.4em;
+               color:#7dffd9; font-style:normal; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  /* ---------- JARVIS MODE (V7 preview): gold skin + spoken-line captions ---------- */
+  body.jarvis #ring .r1 { border-color:rgba(255,204,110,.75); border-top-color:transparent;
+    box-shadow:0 0 26px rgba(255,196,90,.28), inset 0 0 26px rgba(255,196,90,.14); }
+  body.jarvis #ring .r2 { border:1px solid rgba(255,204,110,.42); animation-duration:5s; }
+  body.jarvis #ring .mid b { color:#ffe9c4; }
+  body.jarvis #ring .mid i { color:#ffcf7d; }
+  body.jarvis #title { color:#ffe9c4; }
+  body.jarvis #jarvis { color:#ffcf7d !important; border-color:rgba(255,204,110,.55) !important;
+    box-shadow:0 0 18px rgba(255,196,90,.18); }
+  body.jarvis.speaking #ring .r1 { animation:spin 14s linear infinite, jbreathe 1.05s ease-in-out infinite; }
+  @keyframes jbreathe { 50% { box-shadow:0 0 46px rgba(255,196,90,.55), inset 0 0 34px rgba(255,196,90,.3); } }
+  #caption { position:fixed; left:50%; bottom:84px; transform:translateX(-50%) translateY(8px); z-index:6;
+    max-width:min(760px, 84vw); padding:10px 22px; border-radius:12px; text-align:center;
+    font-family:"SF Mono",ui-monospace,monospace; font-size:13px; letter-spacing:.1em; line-height:1.6;
+    color:#ffe9c4; background:rgba(10,14,18,.72); border:1px solid rgba(255,204,110,.3);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    text-shadow:0 0 14px rgba(255,196,90,.35); opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s; }
+  #caption.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .tldr { position:absolute; width:270px; padding:13px 15px; border-radius:13px; z-index:4;
+    background:rgba(14,18,22,.86); border:1px solid rgba(255,204,110,.5);
+    box-shadow:0 16px 50px rgba(0,0,0,.55), 0 0 30px rgba(255,196,90,.22);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    opacity:0; transform:scale(.9); transition:opacity .3s, transform .3s; pointer-events:none; }
+  .tldr.show { opacity:1; transform:scale(1); }
+  .tldr b { display:block; font-family:"SF Mono",ui-monospace,monospace; font-size:10.5px;
+    letter-spacing:.14em; color:#ffcf7d; margin-bottom:6px; }
+  .tldr p { font-size:11px; line-height:1.55; color:#e8dfc8; }
+  #legend { position:fixed; left:20px; bottom:20px; z-index:5; pointer-events:none;
+    font-family:"SF Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.09em;
+    line-height:2; color:#8fd8c2; background:rgba(8,14,18,.74); border:1px solid rgba(125,255,217,.22);
+    border-radius:12px; padding:9px 15px; }
+  #legend b { color:#7dffd9; font-weight:600; }
+  #ui { position:fixed; z-index:5; left:0; right:0; top:0; display:flex; align-items:center;
+        gap:14px; padding:14px 20px; pointer-events:none; }
+  #ui .chip { pointer-events:auto; font-family:"SF Mono",ui-monospace,monospace; font-size:11px;
+        letter-spacing:.14em; padding:8px 16px; border-radius:99px; cursor:pointer; user-select:none;
+        color:#7dffd9; background:rgba(10,16,20,.7); border:1px solid rgba(125,255,217,.35); }
+  #ui .chip.off { color:#8a97a0; border-color:rgba(255,255,255,.14); }
+  #title { font-family:"SF Mono",ui-monospace,monospace; color:#e8fff7; font-size:13px; letter-spacing:.3em; }
+  #status { margin-left:auto; font-family:"SF Mono",ui-monospace,monospace; font-size:10.5px;
+            letter-spacing:.12em; color:#9fb4ab; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+  #dock { position:fixed; right:0; top:10%; bottom:10%; width:74px; z-index:2; pointer-events:none;
+          border-left:1px dashed rgba(240,200,100,.3); background:linear-gradient(270deg, rgba(240,200,100,.07), transparent); }
+  #dock span { position:absolute; top:50%; right:26px; transform:rotate(90deg) translateX(-50%); transform-origin:right;
+          font-family:"SF Mono",ui-monospace,monospace; font-size:9px; letter-spacing:.4em; color:rgba(240,200,100,.6); }
+  #reader { position:fixed; inset:0; z-index:6; display:none; align-items:center; justify-content:center;
+            background:rgba(4,6,9,.6); backdrop-filter:blur(5px); }
+  #reader .pane { width:min(680px, 82vw); max-height:74vh; overflow:auto; padding:34px 40px;
+            border-radius:20px; background:rgba(12,18,24,.94); border:1px solid rgba(125,255,217,.45);
+            box-shadow:0 30px 90px rgba(0,0,0,.7); }
+  #reader h2 { font-family:"SF Mono",ui-monospace,monospace; font-size:17px; letter-spacing:.12em;
+            color:#a9ffe6; text-transform:uppercase; margin-bottom:16px; }
+  #reader pre { font-family:-apple-system,"Segoe UI",sans-serif; font-size:14px; line-height:1.75;
+            color:#dce8e4; white-space:pre-wrap; }
+  #reader .hint { margin-top:20px; font-family:"SF Mono",ui-monospace,monospace; font-size:10px;
+            letter-spacing:.2em; color:#5a6b62; }
+  #dbg { position:fixed; left:20px; bottom:18px; z-index:6; display:none; pointer-events:none;
+         font-family:"SF Mono",ui-monospace,monospace; font-size:10.5px; line-height:1.8;
+         color:#7dffd9; background:rgba(8,12,16,.85); border:1px solid rgba(125,255,217,.3);
+         border-radius:10px; padding:10px 14px; white-space:pre; }
+  #perm { position:fixed; inset:0; z-index:7; display:none; align-items:center; justify-content:center;
+          background:rgba(5,7,10,.86); }
+  #perm .box { max-width:420px; text-align:center; color:#c9d6d2; font-size:13.5px; line-height:1.7;
+          background:rgba(14,20,26,.9); border:1px solid rgba(125,255,217,.3); border-radius:16px; padding:28px 30px; }
+  #perm .box b { color:#7dffd9; }
+</style></head><body>
+<video id="cam" autoplay playsinline muted></video>
+<canvas id="stars"></canvas>
+<div id="vignette"></div>
+<div id="dock"><span>SHELF</span></div>
+<div id="deck"></div>
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+<div id="ring"><div class="r1"></div><div class="r2"></div>
+  <div class="mid"><b>H.O.L.O.</b><i id="ringstate">ACTIVE</i></div></div>
+<div id="ui">
+  <span id="title">H O L O</span>
+  <span class="chip" id="hands">HANDS ON</span>
+  <span class="chip off" id="camvis">CAM 55%</span>
+  <span class="chip off" id="reset">RESET</span>
+  <span class="chip off" id="debug">DEBUG</span>
+  <span class="chip off" id="jarvis">JARVIS</span>
+  <span class="chip" id="retry">RETRY CAMERA</span>
+  <span id="status">booting…</span>
+</div>
+<div id="reader"><div class="pane"><h2></h2><pre></pre><div class="hint">PINCH ANYWHERE · TAP · OR CLICK TO CLOSE</div></div></div>
+<div id="caption"></div>
+<div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
+<b>TWO PINCHES</b> zoom / rotate &nbsp;·&nbsp; <b>PALM→FIST</b> pull &nbsp;·&nbsp; <b>PALM THRUST</b> repulsor &nbsp;·&nbsp; <b>POINT</b> draw ink<br>
+<b>PALMS SWEEP DOWN</b> or <b>PEACE ✌</b> tidy &nbsp;·&nbsp; <b>CLAP</b> scatter &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode</div>
+<div id="dbg"></div>
+<div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
+  Hand tracking runs entirely on this page — frames never leave your machine and no AI watches the feed.
+  Allow the camera, then just reach out and touch things. (Press <b>H</b> for mouse-only mode.)</div></div>
+
+<script type="module">
+/* ============================================================================
+   HOLO v3 — THE CAMERA IS THE STAGE. You watch your own mirrored hand touch
+   the interface: folder ORBS open into file cards, files open in the reader,
+   everything pinch-drags with momentum. One fingertip cursor, no skeleton.
+   MediaPipe (Apache-2.0, CDN) supplies landmarks; every rule on top is ours.
+   Same engine drives real camera, ?sim=1 choreography, and the ?probe=1
+   battery — amplified reach applies ONLY to real-camera input.
+   ========================================================================== */
+const Q = new URLSearchParams(location.search);
+const SIM = Q.has('sim');
+const FAST = Q.has('fast');
+
+const stars = document.getElementById('stars'), hud = document.getElementById('hud');
+const deck = document.getElementById('deck'), cam = document.getElementById('cam');
+const statusEl = document.getElementById('status');
+let W = innerWidth, H = innerHeight;
+function sizeCanvases(){ W = innerWidth; H = innerHeight;
+  for (const c of [stars, hud]) { c.width = W * devicePixelRatio; c.height = H * devicePixelRatio;
+    c.getContext('2d').setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); } }
+sizeCanvases();
+
+/* ---------- landmark → screen: mirror + cover-crop + REACH AMPLIFICATION ---------- */
+const MAP = { sx: W, sy: H, ox: 0, oy: 0, id: true };
+const AMP = 1.45;      // a comfortable central hand zone reaches the whole screen (camera only)
+function updateMap(vw, vh){
+  if (!vw || !vh){ MAP.sx = W; MAP.sy = H; MAP.ox = 0; MAP.oy = 0; MAP.id = true; return; }
+  const s = Math.max(W / vw, H / vh);
+  MAP.sx = vw * s; MAP.sy = vh * s;
+  MAP.ox = (W - MAP.sx) / 2; MAP.oy = (H - MAP.sy) / 2; MAP.id = false;
+}
+function px(p){
+  let nx = p.x, ny = p.y;
+  if (!MAP.id){ nx = .5 + (nx - .5) * AMP; ny = .5 + (ny - .5) * AMP; }
+  return { x: W - (nx * MAP.sx + MAP.ox), y: ny * MAP.sy + MAP.oy };
+}
+
+/* ---------- starfield (subtle, above the vignette) ---------- */
+const S = stars.getContext('2d');
+const STARS = Array.from({length: 140}, () => ({ x: Math.random()*W, y: Math.random()*H,
+  r: Math.random()*1.3 + .2, tw: Math.random()*Math.PI*2 }));
+function drawStars(t){ S.clearRect(0,0,W,H);
+  for (const s of STARS){ const a = .15 + .4*Math.abs(Math.sin(t/1700 + s.tw));
+    S.globalAlpha = a; S.fillStyle = '#9fd8c8'; S.beginPath(); S.arc(s.x % W, s.y % H, s.r, 0, 7); S.fill(); }
+  S.globalAlpha = 1; }
+
+/* ---------- entities: folder ORBS · file CARDS · 3D OBJECTS ---------- */
+let CARDS = [], TREE = [], SPAWN_OK = false;
+let ink = [];                        // INK MODE strokes: {x,y,t} points, {break:true} gaps
+function orbEl(f){
+  const el = document.createElement('div'); el.className = 'orb';
+  el.innerHTML = `<h3></h3><span></span>`;
+  el.querySelector('h3').textContent = f.name;
+  el.querySelector('span').textContent = `${f.files.length} file${f.files.length === 1 ? '' : 's'}`;
+  deck.appendChild(el); return el;
+}
+function cardEl(note){
+  const el = document.createElement('div'); el.className = 'card';
+  el.innerHTML = `<h3></h3><p></p>`;
+  el.querySelector('h3').textContent = note.title;
+  el.querySelector('p').textContent = (note.body || '').slice(0, 200);
+  deck.appendChild(el); return el;
+}
+function spawnOrbs(tree){
+  for (const c of CARDS) if (c.el) c.el.remove();
+  CARDS = CARDS.filter(c => c.kind === 'obj');
+  // re-seat the 3D objects too: a page loaded in a hidden tab (W=0) spawned them
+  // at degenerate spots, and the old guard only ever re-seated the orbs
+  CARDS.forEach((c, i) => { c.x = W*.82 - i*170; c.y = H*.78; c.vx = c.vy = 0; });
+  TREE = tree;
+  SPAWN_OK = W > 100 && H > 100;
+  const n = Math.max(1, tree.length);
+  tree.forEach((f, i) => {
+    const t = (i + .5) / n;
+    CARDS.push({ el: orbEl(f), kind: 'folder', folder: f, open: false, title: f.name,
+      x: W * (.2 + .6 * t), y: H * (.3 + .12 * Math.sin(i * 2.2)),
+      vx: 0, vy: 0, s: 1, sT: 1, docked: false });
+  });
+}
+function openOrb(orb){
+  orb.open = true; orb.el.classList.add('openf');
+  const n = orb.folder.files.length;
+  orb.folder.files.forEach((note, i) => {
+    const ang = -Math.PI * .78 + (i / Math.max(1, n - 1)) * Math.PI * .95;
+    const R = 235 + (i % 2) * 60;
+    CARDS.push({ el: cardEl(note), kind: 'note', parent: orb, title: note.title,
+      full: note.full || note.body,
+      x: orb.x + Math.cos(ang) * 40, y: orb.y + Math.sin(ang) * 40,
+      tx: orb.x + Math.cos(ang) * R, ty: orb.y + Math.sin(ang) * R,
+      vx: 0, vy: 0, s: .25, sT: 1, docked: false, born: performance.now() });
+  });
+  postState('open_folder', orb.title);
+}
+function closeOrb(orb){
+  orb.open = false; orb.el.classList.remove('openf');
+  for (const c of CARDS.filter(k => k.parent === orb)){ if (c.el) c.el.remove(); }
+  CARDS = CARDS.filter(k => k.parent !== orb);
+  postState('close_folder', orb.title);
+}
+function resetCards(){
+  ink.length = 0;
+  fetch('/api/tree').then(r => r.json()).then(spawnOrbs)
+    .catch(() => spawnOrbs([{ kind:'folder', name:'HOLO', files:[{ title:'HOLO',
+      body:'No notes served — point holo.json at a folder of markdown.', full:'' }] }]));
+}
+resetCards();
+addEventListener('resize', () => { sizeCanvases(); sizeGL();
+  if (MAP.id) updateMap(0, 0);
+  if (!SPAWN_OK && W > 100 && TREE.length) spawnOrbs(TREE); });
+document.addEventListener('visibilitychange', () => { sizeCanvases();
+  if (!SPAWN_OK && W > 100 && TREE.length) spawnOrbs(TREE); });
+
+/* ---------- physics ---------- */
+const DOCK_X = () => W - 74;
+const FRICTION = .93, WALL = .55;
+function physics(){
+  const hov = new Set(HANDS.filter(h => h.present && h.hover).map(h => h.hover));
+  const gone = [];
+  for (const c of CARDS){
+    c.s += ((c.sT ?? 1) - c.s) * .16;                       // birth/scale ease
+    if (c.tx != null){ c.x += (c.tx - c.x) * .14; c.y += (c.ty - c.y) * .14;
+      if (Math.abs(c.tx - c.x) + Math.abs(c.ty - c.y) < 3){ c.tx = c.ty = null; } }
+    else if (c !== drag.card){
+      c.x += c.vx; c.y += c.vy; c.vx *= FRICTION; c.vy *= FRICTION;
+      if (c.docked){ const slot = dockSlot(c); c.vx += (slot.x - c.x)*.14; c.vy += (slot.y - c.y)*.14; }
+      // FLICK-TO-DISMISS: a note thrown hard enough sails off-screen and evaporates
+      // (reopen its orb to bring it back). Gentle drifts still bounce; orbs/objects bounce.
+      const escaping = c.kind === 'note' && !c.docked && Math.hypot(c.vx, c.vy) > 8;
+      if (escaping){
+        if (c.x < -80 || c.x > W+80 || c.y < -80 || c.y > H+80){
+          shocks.push({ x: Math.max(24, Math.min(W-24, c.x)),
+                        y: Math.max(24, Math.min(H-24, c.y)), t: performance.now() });
+          gone.push(c); postState('dismiss', c.title); jSay('dismiss'); continue;
+        }
+      } else {
+        if (c.x < 40){ c.x = 40; c.vx = Math.abs(c.vx)*WALL; }
+        if (c.x > W-40){ c.x = W-40; c.vx = -Math.abs(c.vx)*WALL; }
+        if (c.y < 60){ c.y = 60; c.vy = Math.abs(c.vy)*WALL; }
+        if (c.y > H-40){ c.y = H-40; c.vy = -Math.abs(c.vy)*WALL; }
+      }
+      for (const o of CARDS){ if (o === c || o.parent === c || c.parent === o) continue;
+        const dx = c.x-o.x, dy = c.y-o.y, d = Math.hypot(dx,dy);
+        if (d > 1 && d < 175){ const f = (175-d)/175*.5; c.vx += dx/d*f; c.vy += dy/d*f; } }
+    }
+    if (c.el){
+      const half = c.kind === 'folder' ? 75 : 115, halfY = c.kind === 'folder' ? 75 : 70;
+      c.el.style.transform = `translate3d(${c.x-half}px, ${c.y-halfY}px, 0) scale(${c.s.toFixed(3)})`;
+      c.el.classList.toggle('docked', c.docked);
+      c.el.classList.toggle('hover', hov.has(c) && c !== drag.card);
+    }
+  }
+  if (gone.length){
+    for (const c of gone){ if (c.el) c.el.remove(); }
+    CARDS = CARDS.filter(c => !gone.includes(c));
+  }
+  syncMeshes();
+}
+function dockSlot(c){ const i = CARDS.filter(k => k.docked).indexOf(c);
+  return { x: DOCK_X() + 6, y: H*.14 + i*84 }; }
+function cardAt(x, y){
+  for (let i = CARDS.length-1; i >= 0; i--){ const c = CARDS[i];
+    if (c.kind === 'note'){ if (Math.abs(x-c.x) < 120*c.s && Math.abs(y-c.y) < 78*c.s) return c; }
+    else if (Math.hypot(x-c.x, y-c.y) < (c.kind === 'obj' ? 92 : 82) * c.s) return c; }
+  return null; }
+function targetAt(p){
+  const exact = cardAt(p.x, p.y);            // the thing you SEE under your finger wins
+  if (exact) return exact;
+  let best = null, bd = 110;                 // magnetism is only a small forgiveness halo
+  for (const c of CARDS){ const d = Math.hypot(p.x - c.x, p.y - c.y);
+    if (d < bd){ best = c; bd = d; } }
+  return best;
+}
+
+/* ---------- reader ---------- */
+const reader = { open: false, card: null };
+const readerEl = document.getElementById('reader');
+const paneEl = readerEl.querySelector('.pane');
+function openReader(c){
+  reader.open = true; reader.card = c;
+  readerEl.querySelector('h2').textContent = c.title;
+  readerEl.querySelector('pre').textContent = c.full || '';
+  readerEl.style.display = 'flex';
+  postState('open', c.title);
+  jSay('open', `${c.title}. On screen, sir.`, { cool: 2000 });
+}
+function closeReader(){ reader.open = false; readerEl.style.display = 'none'; }
+readerEl.addEventListener('pointerdown', closeReader);
+
+/* ---------- gesture engine ---------- */
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+/* field-tuned on the galaxy build 2026-08-26: a pinch means FINGERS TOUCHING (.22)
+   and must hold PINCH_EARN consecutive frames — near-pinches register nothing */
+const PINCH_IN = .22, PINCH_OUT = .34, PINCH_EARN = 2;
+function handMetrics(lm){
+  const span = Math.max(1e-4, dist(lm[0], lm[9]));
+  const curl = (i) => dist(lm[i], lm[0]) / span;
+  const tips = [curl(8), curl(12), curl(16), curl(20)];
+  return {
+    span,
+    tips,                                          // [index, middle, ring, pinky] extension ratios
+    pinch: dist(lm[4], lm[8]) / span,
+    open: tips.every(t => t > 1.45),
+    fist: tips.every(t => t < 1.05),
+    point: tips[0] > 1.45 && tips[1] < 1.15 && tips[2] < 1.15 && tips[3] < 1.15,
+    peace: tips[0] > 1.45 && tips[1] > 1.45 && tips[2] < 1.15 && tips[3] < 1.15,
+    palm: { x: (lm[0].x + lm[9].x)/2, y: (lm[0].y + lm[9].y)/2 },
+    tip: lm[8],                                   // the INDEX FINGERTIP is the cursor
+  };
+}
+function mkHandState(){ return { present:false, seen:0, pinch:false, pinchT:0, startPalm:null,
+  smooth:null, trail:[], open:false, openT:0, fist:false, lm:null, m:null, hover:null, twist:null,
+  point:0, spans:[], upT:0 }; }
+const HANDS = [mkHandState(), mkHandState()];
+const drag = { card:null, hand:-1, dx:0, dy:0 };
+let world = null;
+let lastClap = -9e9, shocks = [], beams = [];
+let camOn = false, tracking = true;
+/* green-dot forensics: a PERSISTENT false detection (a face, a lamp) survives the
+   6-frame render gate — so phantoms are killed at three layers instead:
+   confidence floor .6 at the tracker, the span gate here, the stale watchdog below */
+const SPAN_MIN = .025;               // hands smaller than 2.5% of frame = background noise
+const RAW = { n: 0, scores: [] };    // what the tracker saw BEFORE filtering (DEBUG overlay)
+let lastPush = [-9e9, -9e9], lastTidy = -9e9, lastPalmD = null;
+/* diag phone-home: one merged object per page load, so a GL failure and the
+   tracking stage never clobber each other in state/holo-diag.json */
+const DIAG = {};
+function postDiag(patch){ Object.assign(DIAG, patch);
+  try { fetch('/api/diag', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(DIAG) }); } catch(_){} }
+function dropHand(i){
+  const st = HANDS[i];
+  if (st.present && st.pinch) releasePinch(i);
+  Object.assign(st, mkHandState());
+}
+/* stale watchdog: if ingest stops feeding a hand (HANDS OFF, stalled video frames,
+   camera sleep) its last cursor used to stay painted forever — the OTHER green dot */
+function reapStale(){
+  const now = performance.now();
+  for (let i = 0; i < 2; i++)
+    if (HANDS[i].present && now - HANDS[i].upT > 280) dropHand(i);
+}
+
+function ingestHands(rawHands){
+  const now = performance.now();
+  for (let i = 0; i < 2; i++){
+    const st = HANDS[i]; let lm = rawHands[i];
+    let m = lm ? handMetrics(lm) : null;
+    if (m && m.span < SPAN_MIN) { lm = null; m = null; }   // background phantom: too tiny to be a usable hand
+    if (!lm){ if (st.present) dropHand(i); continue; }
+    const raw = px(m.tip);
+    st.present = true; st.seen++; st.upT = now; st.lm = lm; st.m = m;
+    // adaptive smoothing: steady hand = heavy smoothing (no jitter), fast hand = light (no lag)
+    if (!st.smooth) st.smooth = raw;
+    else { const sp = Math.hypot(raw.x - st.smooth.x, raw.y - st.smooth.y);
+      const a = Math.min(.7, .28 + sp / 130);   // calmer cursor (galaxy field lesson), flick preserved
+      st.smooth = { x: st.smooth.x + (raw.x - st.smooth.x) * a,
+                    y: st.smooth.y + (raw.y - st.smooth.y) * a }; }
+    const cur = st.smooth;
+    st.trail.push({ ...cur, t: now }); if (st.trail.length > 10) st.trail.shift();
+    st.spans.push({ s: m.span, t: now }); if (st.spans.length > 8) st.spans.shift();
+    if (st.seen >= 3 && !st.pinch && !drag.card) st.hover = targetAt(cur);
+    if (m.open){ st.open = true; st.openT = now; }
+    else if (st.open && m.fist && now - st.openT < 320 && !st.pinch){ st.open = false;
+      if (!reader.open) forcePull(cur); }
+    else if (!m.open && now - st.openT > 500) st.open = false;
+    st.fist = m.fist;
+    // INK MODE: a POINTING hand (index out, others curled) draws light in the air.
+    // 4-frame earn so a pose flicker never inks; strokes fade on their own; clap clears.
+    if (!reader.open && !st.pinch && m.point && st.seen >= 3){
+      st.point++;
+      if (st.point === 4){ ink.push({ break: true }); jSay('ink', null, { cool: 18000 }); }
+      if (st.point >= 4){ ink.push({ x: cur.x, y: cur.y, t: now });
+        if (ink.length > 700) ink.splice(0, ink.length - 700); }
+    } else { if (st.point >= 4) ink.push({ break: true }); st.point = 0; }
+    // REPULSOR: an open palm THRUST at the camera (span balloons fast) blasts
+    // everything near the palm away — a push, where clap is the two-hand scatter
+    if (!reader.open && m.open && !st.pinch && st.spans.length >= 4 && now - lastPush[i] > 900){
+      const old = st.spans[0];
+      if (now - old.t < 260 && m.span / old.s > 1.32){
+        lastPush[i] = now;
+        const p = px(m.palm);
+        for (const c of CARDS){ const dx = c.x - p.x, dy = c.y - p.y, d = Math.max(50, Math.hypot(dx, dy));
+          if (d < 520){ const f = (520 - d) / 520 * 30;
+            c.docked = false; c.tx = c.ty = null; c.vx += dx/d*f; c.vy += dy/d*f; } }
+        shocks.push({ x: p.x, y: p.y, t: now });
+        postState('push', 'repulsor'); jSay('push');
+      }
+    }
+    // READER SCROLL: while the reader is open, an open palm wipes the page —
+    // content follows the hand, touch-style (long notes were unreachable by hand)
+    if (reader.open && m.open && st.trail.length >= 2){
+      const prev = st.trail[st.trail.length - 2];
+      paneEl.scrollTop -= (cur.y - prev.y) * 2.4;
+    }
+    if (!st.pinch && st.seen >= 3 && m.pinch < PINCH_IN){
+      st.pinchN = (st.pinchN || 0) + 1;
+      if (st.pinchN >= PINCH_EARN){ st.pinch = true; st.pinchT = now;
+        st.startPalm = px(m.palm); beginPinch(i, cur); } }
+    else if (!st.pinch && m.pinch >= PINCH_IN) st.pinchN = 0;
+    else if (st.pinch && m.pinch > PINCH_OUT){ releasePinch(i); }
+    else if (st.pinch){ movePinch(i, cur); }
+    // PEACE ✌ held ~8 frames = one-handed TIDY (same as the two-palm sweep)
+    if (m.peace && !st.pinch && !reader.open){
+      st.peaceN = (st.peaceN || 0) + 1;
+      if (st.peaceN === 8 && now - lastTidy > 2500){ lastTidy = now; tidyBoard(); }
+    } else st.peaceN = 0;
+  }
+  twoHand(now);
+  clapCheck(now);
+  tidyCheck(now);
+}
+function beginPinch(i, cur){
+  if (reader.open){ closeReader(); return; }
+  const c = HANDS[i].hover || targetAt(cur);
+  if (c && !drag.card){ drag.card = c; drag.hand = i; drag.dx = c.x - cur.x; drag.dy = c.y - cur.y;
+    c.docked = false; c.tx = c.ty = null;
+    if (c.el) c.el.classList.add('grab'); postState('grab', c.title); }
+}
+function movePinch(i, cur){
+  if (drag.card && drag.hand === i){
+    const c = drag.card;
+    c.x += (cur.x + drag.dx - c.x) * .62; c.y += (cur.y + drag.dy - c.y) * .62;
+    if (c.kind === 'obj'){
+      const st = HANDS[i], a = px(st.lm[4]), b = px(st.lm[8]);
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      if (st.twist != null){
+        let d = ang - st.twist;
+        if (d > Math.PI) d -= 2*Math.PI; if (d < -Math.PI) d += 2*Math.PI;
+        c.mesh.rotation.y += d * 1.6; c.spin.y = d * 1.1;
+      }
+      st.twist = ang;
+    }
+  }
+}
+function peakVelocity(tr){
+  let best = { vx: 0, vy: 0, sp: 0 };
+  for (let i = 1; i < tr.length; i++){
+    const dt = Math.max(8, tr[i].t - tr[i-1].t);
+    const vx = (tr[i].x - tr[i-1].x) / dt * 16, vy = (tr[i].y - tr[i-1].y) / dt * 16;
+    const sp = Math.hypot(vx, vy);
+    if (sp > best.sp) best = { vx, vy, sp };
+  }
+  return best;
+}
+function releasePinch(i){
+  const st = HANDS[i]; st.pinch = false; st.twist = null;
+  if (drag.card && drag.hand === i){
+    const c = drag.card, tr = st.trail;
+    const v = peakVelocity(tr);
+    if (v.sp > 4){ c.vx = v.vx * 1.35; c.vy = v.vy * 1.35; }
+    const palmNow = st.m ? px(st.m.palm) : st.startPalm;
+    const quick = performance.now() - st.pinchT < 300 &&
+                  st.startPalm && dist(st.startPalm, palmNow) < 34;
+    if (c.x > DOCK_X() - 80){ c.docked = true; postState('dock', c.title); jSay('dock'); }
+    else if (quick && c.kind === 'folder'){ c.vx = c.vy = 0; c.open ? closeOrb(c) : openOrb(c); }
+    else if (quick && c.kind === 'note'){ c.vx = c.vy = 0; openReader(c); }
+    else if (quick && c.kind === 'obj'){ c.spin.y += .12; }
+    else if (Math.hypot(c.vx, c.vy) > 6) postState('fling', c.title);
+    if (c.el) c.el.classList.remove('grab');
+    drag.card = null; drag.hand = -1;
+  }
+}
+function twoHand(now){
+  const [a, b] = HANDS;
+  if (!(a.present && b.present && a.pinch && b.pinch)){ world = null; return; }
+  const pa = a.smooth, pb = b.smooth;
+  const d = Math.hypot(pa.x-pb.x, pa.y-pb.y), ang = Math.atan2(pb.y-pa.y, pb.x-pa.x);
+  const mid = { x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 };
+  if (drag.card){
+    // BOTH hands on one thing = stretch IT. Stretch a note past 1.7× and it OPENS.
+    const c = drag.card, other = drag.hand === 0 ? pb : pa;
+    const near = Math.hypot(other.x - c.x, other.y - c.y) < 240 * Math.max(1, c.s);
+    if (!world || world.mode !== 'card'){ if (near) world = { mode:'card', d0:d }; return; }
+    const k = Math.min(1.06, Math.max(.94, d / world.d0));
+    c.sT = Math.min(2.3, Math.max(.5, (c.sT ?? 1) * k));
+    c.s = c.sT;
+    world.d0 = d;
+    if (c.kind === 'note' && c.sT > 1.7){
+      c.sT = c.s = 1; c.vx = c.vy = 0;
+      if (c.el) c.el.classList.remove('grab');
+      drag.card = null; drag.hand = -1;
+      a.pinch = b.pinch = false; a.twist = b.twist = null;
+      world = null;
+      openReader(c);
+    }
+    // …and CRUSH a note below .58× and Jarvis gives you the gist (squeeze = TL;DR)
+    else if (c.kind === 'note' && c.sT < .58){
+      c.sT = c.s = 1; c.vx = c.vy = 0;
+      if (c.el) c.el.classList.remove('grab');
+      drag.card = null; drag.hand = -1;
+      a.pinch = b.pinch = false; a.twist = b.twist = null;
+      world = null;
+      summarize(c);
+    }
+    return;
+  }
+  // empty space: zoom + rotate the whole scene
+  if (!world || world.mode !== 'world'){ world = { mode:'world', d0:d, a0:ang }; return; }
+  const s = Math.min(1.06, Math.max(.94, d / world.d0));
+  const rot = ang - world.a0;
+  for (const c of CARDS){ if (c.docked) continue;
+    let dx = c.x - mid.x, dy = c.y - mid.y;
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    [dx, dy] = [dx*cs - dy*sn, dx*sn + dy*cs];
+    c.x = mid.x + dx*s; c.y = mid.y + dy*s;
+    c.sT = Math.min(1.5, Math.max(.6, (c.sT ?? 1) * s));
+  }
+  world.d0 = d; world.a0 = ang;
+}
+function forcePull(cur){
+  let best = null, bd = 0;
+  for (const c of CARDS){ const d = Math.hypot(c.x-cur.x, c.y-cur.y);
+    if (d > 220 && (!best || d < bd)){ best = c; bd = d; } }
+  if (best){ best.docked = false; best.tx = best.ty = null;
+    best.vx = (cur.x - best.x) * .085; best.vy = (cur.y - best.y) * .085;
+    beams.push({ from:{...cur}, card: best, t: performance.now() });
+    postState('pull', best.title); jSay('pull'); }
+}
+function clapCheck(now){
+  const [a, b] = HANDS;
+  if (!(a.present && b.present) || now - lastClap < 1100){ lastPalmD = null; return; }
+  const pa = px(a.m.palm), pb = px(b.m.palm);
+  const d = Math.hypot(pa.x-pb.x, pa.y-pb.y);
+  const va = a.trail.length > 2 ? dist(a.trail[a.trail.length-1], a.trail[a.trail.length-3]) : 0;
+  // galaxy field lesson: a real clap is two FLAT palms (they read "open" edge-on, then
+  // MediaPipe merges them at contact) — open-ness is NOT in the gate; the RUSH is the clap
+  const closing = lastPalmD != null && lastPalmD - d > 16;
+  lastPalmD = d;
+  if (d < Math.min(W,H)*.14 && va > 18 && closing){
+    lastClap = now;
+    const mid = { x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 };
+    for (const c of CARDS){ const dx = c.x-mid.x, dy = c.y-mid.y, dd = Math.max(40, Math.hypot(dx,dy));
+      c.docked = false; c.tx = c.ty = null; c.vx += dx/dd*34; c.vy += dy/dd*34; }
+    ink.length = 0;                                  // the clap also wipes the ink
+    shocks.push({ ...mid, t: now }); postState('clear', 'all'); jSay('clear');
+  }
+}
+/* TIDY SWEEP: both palms open, swept DOWN together — the whole board snaps into a
+   clean grid (high-effort two-hand gesture for a rare, powerful act, per the
+   effort-to-usage design rule; clap scatters, tidy un-scatters) */
+function tidyCheck(now){
+  const [a, b] = HANDS;
+  if (!(a.present && b.present) || now - lastTidy < 1400 || reader.open) return;
+  if (!(a.m && b.m && a.m.open && b.m.open) || a.trail.length < 3 || b.trail.length < 3) return;
+  const dy = st => st.trail[st.trail.length-1].y - st.trail[st.trail.length-3].y;
+  const dxAbs = st => Math.abs(st.trail[st.trail.length-1].x - st.trail[st.trail.length-3].x);
+  const va = dy(a), vb = dy(b);
+  if (va > 26 && vb > 26 && dxAbs(a) < va && dxAbs(b) < vb &&
+      Math.abs(a.smooth.y - b.smooth.y) < H * .3){
+    lastTidy = now;
+    tidyBoard();
+  }
+}
+function tidyBoard(){
+  const loose = CARDS.filter(c => !c.docked);
+  const n = loose.length; if (!n) return;
+  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * (W - 140) / (H - 200)))));
+  const rows = Math.ceil(n / cols);
+  const cw = Math.min(280, (W - 200) / cols), ch = Math.min(200, (H - 240) / rows);
+  const x0 = W/2 - (cols - 1) * cw / 2, y0 = Math.max(160, H/2 - (rows - 1) * ch / 2);
+  loose.sort((p, q) => (p.kind + p.title).localeCompare(q.kind + q.title));
+  loose.forEach((c, i) => { c.vx = c.vy = 0; c.sT = 1;
+    c.tx = x0 + (i % cols) * cw; c.ty = y0 + Math.floor(i / cols) * ch; });
+  shocks.push({ x: W/2, y: H/2, t: performance.now() });
+  postState('tidy', String(n)); jSay('tidy');
+}
+let stateTimer = 0;
+function postState(event, card){
+  clearTimeout(stateTimer);
+  stateTimer = setTimeout(() => { fetch('/api/state', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ event, card }) }).catch(()=>{}); }, 120);
+}
+
+/* ---------- JARVIS MODE (V7 preview) — he SPEAKS about what your hands do ----------
+   Voice = the browser's own speech engine (Daniel, the en-GB butler, when installed):
+   fully local, no keys, no cloud — same privacy law as the hand tracking. Everything
+   in this block is OPT-IN (chip · key J · ?jarvis=1); with it off, the deck behaves
+   exactly as before. The state file keeps flowing either way — this is the preview
+   of what the real brain-studio merge will read. */
+let JARVIS_ON = false, LAST_SUM = null, SPEAK_TOKEN = 0, jSeq = 0;
+const SYNTH = window.speechSynthesis || null;
+const captionEl = document.getElementById('caption');
+const jCool = {};
+let jVoice = null;
+function pickVoice(){ if (!SYNTH) return;
+  const vs = SYNTH.getVoices();
+  jVoice = vs.find(v => /daniel/i.test(v.name) && v.lang === 'en-GB')
+        || vs.find(v => /arthur/i.test(v.name) && v.lang === 'en-GB')
+        || vs.find(v => /uk english male/i.test(v.name))
+        || vs.find(v => v.lang === 'en-GB') || null; }
+if (SYNTH){ pickVoice(); SYNTH.onvoiceschanged = pickVoice; }
+const jLines = {
+  dock:    ['Filed, sir.', 'On the shelf.', 'Pinned for today.'],
+  dismiss: ['Discarded.', 'Gone, sir.', "We won't miss it."],
+  clear:   ['Clean slate, sir.'],
+  tidy:    ['Order restored, sir.', 'Tidied.'],
+  pull:    ['Incoming, sir.', 'As requested.'],
+  push:    ['Back. All of it.', 'Cleared the air, sir.'],
+  ink:     ['Taking dictation, sir.'],
+};
+function jSay(key, text, opts = {}){
+  if (!JARVIS_ON) return;
+  const now = performance.now();
+  if (now - (jCool[key] || -9e9) < (opts.cool ?? 3000)) return;
+  if (!text){ const L = jLines[key]; text = L[jSeq++ % L.length]; }
+  if (SYNTH && SYNTH.speaking && !opts.force) return;
+  jCool[key] = now;
+  const token = ++SPEAK_TOKEN;
+  captionEl.textContent = text; captionEl.classList.add('show');
+  document.body.classList.add('speaking');
+  const done = () => { if (token !== SPEAK_TOKEN) return;
+    document.body.classList.remove('speaking');
+    setTimeout(() => { if (token === SPEAK_TOKEN) captionEl.classList.remove('show'); }, 700); };
+  const fallback = setTimeout(done, Math.max(2600, text.length * 65));
+  try {
+    if (SYNTH){
+      if (opts.force) SYNTH.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (jVoice) u.voice = jVoice;
+      u.rate = .98; u.pitch = .88;
+      u.onend = u.onerror = () => { clearTimeout(fallback); done(); };
+      SYNTH.speak(u);
+    }
+  } catch (_){}
+}
+function setJarvis(on){
+  JARVIS_ON = on;
+  document.body.classList.toggle('jarvis', on);
+  document.getElementById('jarvis').classList.toggle('off', !on);
+  document.getElementById('title').textContent = on ? 'J A R V I S' : 'H O L O';
+  document.querySelector('#ring .mid b').textContent = on ? 'J.A.R.V.I.S.' : 'H.O.L.O.';
+  if (on){ const h = new Date().getHours();
+    jSay('greet', `Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, sir. Hands on.`,
+      { force: true, cool: 0 }); }
+  else { try { if (SYNTH) SYNTH.cancel(); } catch (_){}
+    SPEAK_TOKEN++; captionEl.classList.remove('show'); document.body.classList.remove('speaking'); }
+  postState('jarvis', on ? 'on' : 'off');
+}
+/* squeeze-to-summarize: crush a note between both hands → the gist, spoken.
+   No model, no API — the gist is the note's own opening sentences, honest and local. */
+function gistOf(c){
+  const t = (c.full || c.body || '').replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[#*_>`|]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const parts = t.split(/(?<=[.!?])\s+/); let out = '';
+  for (const s of parts){ if (out && out.length + s.length > 220) break; out += (out ? ' ' : '') + s; }
+  return out || c.title;
+}
+function summarize(c){
+  LAST_SUM = c.title;
+  const gist = gistOf(c);
+  document.querySelectorAll('.tldr').forEach(el => el.remove());
+  const el = document.createElement('div'); el.className = 'tldr';
+  el.innerHTML = '<b></b><p></p>';
+  el.querySelector('b').textContent = 'TL;DR — ' + c.title;
+  el.querySelector('p').textContent = gist;
+  el.style.left = Math.min(W - 300, Math.max(20, c.x - 135)) + 'px';
+  el.style.top = Math.min(H - 200, Math.max(80, c.y - 60)) + 'px';
+  document.getElementById('deck').appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => { if (!el.classList.contains('show')){ el.classList.add('show');
+    el.style.opacity = '1'; el.style.transform = 'scale(1)'; } }, 60);   // hidden-tab: rAF is paused
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 7000);
+  postState('sum', c.title);
+  jSay('sum', `The gist of ${c.title}: ${gist.slice(0, 150)}`, { force: true, cool: 1500 });
+}
+
+/* ---------- 3D objects ---------- */
+let THREE_OK = false, glRenderer = null, glScene = null, glCam = null;
+async function startGL(){
+  try {
+    let T = null;
+    try { T = await import('/vendor/three.module.js'); }
+    catch (_){ T = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js'); }
+    glRenderer = new T.WebGLRenderer({ canvas: document.getElementById('gl'), alpha: true, antialias: true });
+    glRenderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    glScene = new T.Scene();
+    glCam = new T.PerspectiveCamera(45, W/H, 1, 8000);
+    const key = new T.DirectionalLight(0xaaffe0, 1.6); key.position.set(200, 300, 500);
+    glScene.add(key); glScene.add(new T.AmbientLight(0x224437, 1.4));
+    const mk = (geo, color, emiss) => new T.Mesh(geo, new T.MeshStandardMaterial({
+      color, emissive: emiss, emissiveIntensity: .5, metalness: .72, roughness: .24 }));
+    const objs = [
+      { title: 'TORUS CORE',  mesh: mk(new T.TorusKnotGeometry(40, 12, 130, 18), 0x1d3f36, 0x2effbe) },
+      { title: 'THE REACTOR', mesh: mk(new T.TorusGeometry(44, 11, 26, 64),      0x3a2f14, 0xf0c064) },
+      { title: 'THE CORE',    mesh: mk(new T.IcosahedronGeometry(48, 1),          0x16323e, 0x7de4ff) },
+    ];
+    objs.forEach((o, i) => {
+      glScene.add(o.mesh);
+      CARDS.push({ el: null, kind: 'obj', mesh: o.mesh, title: o.title, full: '',
+        x: W*.82 - i*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,
+        spin: { x: .003, y: .007 } });
+    });
+    sizeGL(); THREE_OK = true;
+    postDiag({ gl: 'ok' });
+  } catch (e) { THREE_OK = false;
+    postDiag({ gl: 'FAIL: ' + ((e && (e.message || String(e))) || '?').slice(0, 200) }); }
+}
+function sizeGL(){ if (!glRenderer) return; glRenderer.setSize(W, H, false);
+  glCam.aspect = W / H;
+  // PIXEL-TRUE: camera distance derives from window height so world units = screen
+  // pixels at z=0 at EVERY window size. The fixed z=900 only showed ~745px of the
+  // plane — on a tall window the objects spawned outside the frustum ("the 3D
+  // object is not in the screen", 2026-08-23 field report)
+  glCam.position.z = (H / 2) / Math.tan(glCam.fov * Math.PI / 360);
+  glCam.updateProjectionMatrix(); }
+function syncMeshes(){
+  if (!glRenderer) return;
+  for (const c of CARDS){ if (c.kind !== 'obj') continue;
+    c.mesh.position.set(c.x - W/2, H/2 - c.y, 0);
+    c.mesh.scale.setScalar(c.s);
+    if (c !== drag.card){
+      c.mesh.rotation.y += c.spin.y; c.mesh.rotation.x += c.spin.x;
+      c.spin.y *= .986; c.spin.x *= .986;
+      if (Math.abs(c.spin.y) < .006) c.spin.y = .006;
+    }
+  }
+  glRenderer.render(glScene, glCam);
+}
+startGL();
+
+/* ---------- HUD: ONE fingertip cursor (no skeleton) + FX ---------- */
+const HG = hud.getContext('2d');
+let debugOn = false;
+const dbgEl = document.getElementById('dbg');
+function drawDebug(){
+  if (!debugOn){ dbgEl.style.display = 'none'; return; }
+  dbgEl.style.display = 'block';
+  const lines = [`win ${W}x${H} · video ${cam.videoWidth||0}x${cam.videoHeight||0} · amp ${MAP.id?'off':AMP} · map sx${Math.round(MAP.sx)} sy${Math.round(MAP.sy)} ox${Math.round(MAP.ox)} oy${Math.round(MAP.oy)}`];
+  lines.push(`gl ${THREE_OK ? 'ok' : 'OFF'} · cam raw ${RAW.n}${RAW.scores.length ? ' [' + RAW.scores.map(s => s.toFixed(2)).join(' ') + ']' : ''} · ink ${ink.filter(p => !p.break).length}`);
+  const now = performance.now();
+  HANDS.forEach((st, i) => {
+    if (!st.present){ lines.push(`hand${i} —`); return; }
+    const c = st.smooth || { x: 0, y: 0 };
+    lines.push(`hand${i} seen${st.seen} age${Math.round(now - st.upT)}ms span ${st.m ? st.m.span.toFixed(3) : '?'} cur ${Math.round(c.x)},${Math.round(c.y)} pinch ${st.m ? st.m.pinch.toFixed(2) : '?'}${st.pinch ? ' ●' : ''}${st.m && st.m.point ? ' ✏' : ''} hover ${st.hover ? st.hover.title : '—'}`);
+  });
+  lines.push(`drag ${drag.card ? drag.card.title : '—'} · reader ${reader.open ? 'OPEN' : '—'} · entities ${CARDS.length}`);
+  dbgEl.textContent = lines.join('\n');
+}
+function drawHud(t){
+  HG.clearRect(0,0,W,H);
+  drawDebug();
+  // INK strokes: glowing lines that breathe out over 10s (consecutive break
+  // markers collapse so dead stroke boundaries never pile up)
+  ink = ink.filter((p, idx) => p.break ? !(ink[idx-1] && ink[idx-1].break) : t - p.t < 10000);
+  if (ink.length){
+    HG.lineCap = HG.lineJoin = 'round';
+    let path = [];
+    const flush = () => { if (path.length > 1){
+      for (let i = 1; i < path.length; i++){
+        const a = Math.max(0, 1 - (t - path[i].t) / 10000);
+        if (a < .03) continue;
+        HG.strokeStyle = `rgba(125,255,217,${(a * .85).toFixed(3)})`;
+        HG.lineWidth = 3.5;
+        HG.beginPath(); HG.moveTo(path[i-1].x, path[i-1].y); HG.lineTo(path[i].x, path[i].y); HG.stroke();
+      } } path = []; };
+    for (const p of ink){ if (p.break) flush(); else path.push(p); }
+    flush();
+  }
+  for (const st of HANDS){
+    // a cursor must EARN the screen: phantom one-frame detections (a face, a shirt
+    // fold) never render — his "weird green dot" field report
+    if (!st.present || !st.smooth || st.seen < 6) continue;
+    const cur = st.smooth;
+    const k = st.m ? Math.max(0, Math.min(1, (st.m.pinch - .2) / .5)) : 1;   // 0=closed 1=open
+    const r = 9 + 20 * k;
+    // soft glow halo
+    const g = HG.createRadialGradient(cur.x, cur.y, 2, cur.x, cur.y, r + 18);
+    g.addColorStop(0, 'rgba(125,255,217,.5)'); g.addColorStop(1, 'rgba(125,255,217,0)');
+    HG.fillStyle = g; HG.beginPath(); HG.arc(cur.x, cur.y, r + 18, 0, 7); HG.fill();
+    // the ring: contracts as the pinch closes
+    HG.lineWidth = 2.4; HG.strokeStyle = st.pinch ? '#9dffe4' : 'rgba(190,255,235,.9)';
+    HG.beginPath(); HG.arc(cur.x, cur.y, st.pinch ? 8 : r, 0, 7); HG.stroke();
+    HG.fillStyle = st.pinch ? 'rgba(157,255,228,.85)' : 'rgba(230,255,248,.9)';
+    HG.beginPath(); HG.arc(cur.x, cur.y, 3, 0, 7); HG.fill();
+  }
+  beams = beams.filter(b => t - b.t < 420);
+  for (const b of beams){ const a = 1 - (t - b.t)/420;
+    HG.strokeStyle = `rgba(240,200,100,${(a*.8).toFixed(2)})`; HG.lineWidth = 2;
+    HG.beginPath(); HG.moveTo(b.from.x, b.from.y); HG.lineTo(b.card.x, b.card.y); HG.stroke(); }
+  shocks = shocks.filter(s => t - s.t < 700);
+  for (const s of shocks){ const k = (t - s.t)/700;
+    HG.strokeStyle = `rgba(125,255,217,${(1-k).toFixed(2)})`; HG.lineWidth = 3*(1-k)+.5;
+    HG.beginPath(); HG.arc(s.x, s.y, k*Math.min(W,H)*.5, 0, 7); HG.stroke(); }
+}
+
+/* ---------- main loop ---------- */
+function loop(t){ if (!SIM && !Q.has('probe')) reapStale();
+  drawStars(t); physics(); drawHud(t); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+/* ---------- camera + MediaPipe ---------- */
+let landmarker = null, lastVideoT = -1, camStarting = false;
+async function startCamera(){
+  if (SIM || camOn || camStarting) return;
+  camStarting = true;
+  statusEl.textContent = 'loading hand tracking…';
+  if (!landmarker){
+    // SELF-HOSTED first (no CDN in the path — ad-block extensions and offline can't
+    // kill it, the 2026-08-21 field failure); public CDN only as the fallback
+    let stage = 'import', localErr = null;
+    try {
+      let mp = null, wasmDir = '/vendor/wasm', model = '/vendor/hand_landmarker.task';
+      try { mp = await import('/vendor/vision_bundle.mjs'); }
+      catch (le){
+        localErr = (le && (le.message || String(le)) || '?').slice(0, 300);
+        console.error('[holo] local bundle import failed:', le);
+        mp = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1');
+        wasmDir = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
+        model = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+      }
+      stage = 'wasm';
+      statusEl.textContent = 'tracking core loaded · initializing…';
+      const files = await mp.FilesetResolver.forVisionTasks(wasmDir);
+      stage = 'model';
+      // confidence floors raised off the loose .5 defaults: a face or a shirt fold
+      // that scores .5-.6 as a "hand" is exactly the parked-green-dot phantom
+      const opts = (d) => ({ baseOptions: { modelAssetPath: model, delegate: d },
+                             runningMode: 'VIDEO', numHands: 2,
+                             minHandDetectionConfidence: .6,
+                             minHandPresenceConfidence: .6,
+                             minTrackingConfidence: .6 });
+      try { landmarker = await mp.HandLandmarker.createFromOptions(files, opts('GPU')); }
+      catch (ge){ console.error('[holo] GPU delegate failed, trying CPU:', ge);
+        landmarker = await mp.HandLandmarker.createFromOptions(files, opts('CPU')); }
+    } catch (e) {
+      camStarting = false;
+      console.error('[holo] tracking init failed at stage', stage, e);
+      const msg = (e && (e.message || String(e)) || 'unknown').slice(0, 110);
+      statusEl.textContent = `tracking failed @${stage}: ${msg} · RETRY`;
+      postDiag({ fail: stage, error: (e && (e.message || String(e)) || '?').slice(0, 300),
+             name: e && e.name, stack: (e && e.stack || '').slice(0, 600),
+             localImportError: localErr, ua: navigator.userAgent,
+             gpu: !!window.WebGLRenderingContext, win: [W, H] });
+      return;
+    }
+    postDiag({ fail: null, stage: 'tracking-ready', localImportError: localErr, ua: navigator.userAgent });
+  }
+  let stream = null;
+  try {
+    document.getElementById('perm').style.display = 'flex';
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+  } catch (e) {
+    document.getElementById('perm').style.display = 'none';
+    camStarting = false;
+    const name = e && e.name;
+    statusEl.textContent =
+      name === 'NotAllowedError'  ? 'camera BLOCKED · address-bar camera icon → Allow → RETRY' :
+      name === 'NotFoundError'    ? 'no camera found on this machine' :
+      name === 'NotReadableError' ? 'camera is busy in another app · close it, then RETRY' :
+      'camera unavailable (' + (name || 'unknown') + ') · RETRY';
+    return;
+  }
+  document.getElementById('perm').style.display = 'none';
+  cam.srcObject = stream; camOn = true; camStarting = false;
+  statusEl.textContent = 'hands live · on-device';
+  const tick = () => { if (!camOn) return;
+    if (tracking && cam.currentTime !== lastVideoT && cam.videoWidth){
+      lastVideoT = cam.currentTime;
+      updateMap(cam.videoWidth, cam.videoHeight);
+      const res = landmarker.detectForVideo(cam, performance.now());
+      const hd = res.handednesses || res.handedness || [];
+      RAW.n = (res.landmarks || []).length;                       // pre-filter truth for DEBUG
+      RAW.scores = hd.map(h => (h && h[0] && h[0].score) ?? 1);
+      const lms = (res.landmarks || []).filter((_, i) =>
+        ((hd[i] && hd[i][0] && hd[i][0].score) ?? 1) > .8);
+      ingestHands(lms);
+    }
+    requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+startCamera();
+
+/* ---------- SIM mode ---------- */
+function synthHand(x, y, pose, scale){
+  const lm = []; const s = scale || .09;
+  const spread = pose === 'open' ? 1.0 : pose === 'fist' ? .38 : .78;
+  lm[0] = { x, y: y + s*.9 };
+  lm[9] = { x, y: y - s*.1 };
+  lm[1]={x:x-s*.35,y:y+s*.55}; lm[2]={x:x-s*.5,y:y+s*.3}; lm[3]={x:x-s*.55,y:y+s*.1};
+  lm[5]={x:x-s*.3,y:y-s*.15}; lm[13]={x:x+s*.15,y:y-s*.15}; lm[17]={x:x+s*.32,y:y-s*.1};
+  const tipY = y - s * (pose === 'fist' ? .35 : 1.05) * spread;
+  lm[8] = { x: pose === 'pinch' ? x - s*.18 : pose === 'point' ? x - s*.28 : x - s*.28*spread,
+            y: pose === 'pinch' ? y - s*.5  : pose === 'point' ? y - s*1.05 : tipY };
+  lm[4] = { x: pose === 'pinch' ? x - s*.16 : x - s*.62*spread, y: pose === 'pinch' ? y - s*.48 : y + s*.05 };
+  const curlY = y - s*.133;                      // fist-height fingertips for the POINT pose
+  lm[12]={ x: x - s*.05, y: pose === 'point' ? curlY : tipY };
+  lm[16]={ x: x + s*.16, y: ((pose === 'point' || pose === 'peace') ? curlY : tipY) + s*.06 };
+  lm[20]={ x: x + s*.3,  y: ((pose === 'point' || pose === 'peace') ? curlY : tipY) + s*.14 };
+  for (const [a,b,i] of [[5,8,6],[5,8,7],[9,12,10],[9,12,11],[13,16,14],[13,16,15],[17,20,18],[17,20,19]]){
+    const p = lm[a], q = lm[b], k = (i % 2 ? .66 : .33);
+    lm[i] = { x: p.x + (q.x-p.x)*k, y: p.y + (q.y-p.y)*k };
+  }
+  return lm;
+}
+const lerp = (a, b, k) => a + (b - a) * k;
+function segPinchDrag(x0,y0,x1,y1){ return t => synthHand(lerp(x0,x1,t), lerp(y0,y1,t), t < .08 ? 'open' : 'pinch'); }
+const tapAt = (x, y) => [
+  [500, t => synthHand(x, y, 'open'), null],
+  [200, t => synthHand(x, y, 'pinch'), null],
+  [200, t => synthHand(x, y, 'open'), null],
+];
+const SIM_SCRIPT = [
+  ...tapAt(.42, .32),                                                    // open the first orb
+  [700,  t => synthHand(.5, .55, 'open'), null],
+  [1400, segPinchDrag(.5, .55, .3, .7), null],                           // grab a file, drag
+  [300,  t => synthHand(lerp(.3,.22,t), .7, 'pinch'), null],
+  [180,  t => synthHand(.2, .7, 'open'), null],                          // flick
+  ...tapAt(.42, .32),                                                    // close the orb
+  [800,  t => synthHand(.86, .84, 'open'),  t => synthHand(.14, .84, 'open')],
+  [1600, t => synthHand(lerp(.86,.97,t), .84, 'pinch'), t => synthHand(lerp(.14,.03,t), .84, 'pinch')],
+  [700,  t => synthHand(.75, .3, 'open'), null],
+  [260,  t => synthHand(.75, .3, 'fist'), null],                         // force pull
+  [900,  t => synthHand(.75, .3, 'open'), null],
+  [1100, t => synthHand(lerp(.28,.72,t), .38 + .1*Math.sin(t*9.42), 'point'), null], // air-draw a wave
+  [700,  t => synthHand(.38, .3, 'open'), t => synthHand(.62, .3, 'open')],
+  [450,  t => synthHand(.38, lerp(.3,.64,t), 'open'), t => synthHand(.62, lerp(.3,.64,t), 'open')], // tidy sweep
+  [900,  null, null],
+  [420,  t => synthHand(lerp(.68,.52,t), .5, 'fist'), t => synthHand(lerp(.32,.48,t), .5, 'fist')], // clap
+  [1200, null, null],
+];
+async function runSim(){
+  statusEl.textContent = 'SIM MODE · scripted hands';
+  const speed = FAST ? .25 : 1;
+  for (;;){
+    for (const [dur, fa, fb] of SIM_SCRIPT){
+      const t0 = performance.now(), d = dur * speed;
+      while (performance.now() - t0 < d){
+        const k = Math.min(1, (performance.now() - t0) / d);
+        ingestHands([fa ? fa(k) : undefined, fb ? fb(k) : undefined]);
+        await new Promise(r => setTimeout(r, 33));
+      }
+    }
+  }
+}
+if (SIM) runSim();
+
+/* ---------- mouse fallback ---------- */
+let mDrag = null, mDown = 0, mStart = null;
+deck.addEventListener('pointerdown', e => { const c = targetAt({ x: e.clientX, y: e.clientY });
+  if (c){ mDrag = c; mDown = performance.now(); mStart = { x: e.clientX, y: e.clientY };
+    drag.card = c; drag.hand = 9; drag.dx = c.x - e.clientX; drag.dy = c.y - e.clientY;
+    c.tx = c.ty = null; if (c.el) c.el.classList.add('grab'); } });
+addEventListener('pointermove', e => { if (mDrag){ mDrag.x = e.clientX + drag.dx; mDrag.y = e.clientY + drag.dy; } });
+addEventListener('pointerup', e => { if (mDrag){
+  const quick = performance.now() - mDown < 300 && mStart &&
+                Math.hypot(e.clientX - mStart.x, e.clientY - mStart.y) < 8;
+  if (mDrag.el) mDrag.el.classList.remove('grab');
+  if (mDrag.x > DOCK_X() - 80) mDrag.docked = true;
+  else if (quick && mDrag.kind === 'folder'){ mDrag.open ? closeOrb(mDrag) : openOrb(mDrag); }
+  else if (quick && mDrag.kind === 'note'){ openReader(mDrag); }
+  drag.card = null; mDrag = null; } });
+
+/* ---------- ui ---------- */
+const CAM_LEVELS = [.55, .8, .15];
+let camLevel = 0;
+document.getElementById('hands').onclick = function(){ tracking = !tracking;
+  this.textContent = tracking ? 'HANDS ON' : 'HANDS OFF'; this.classList.toggle('off', !tracking);
+  document.getElementById('ringstate').textContent = tracking ? 'ACTIVE' : 'PAUSED';
+  if (!tracking){ dropHand(0); dropHand(1); }   // HANDS OFF used to leave the last cursor painted forever
+};
+document.getElementById('camvis').onclick = function(){ camLevel = (camLevel + 1) % 3;
+  cam.style.opacity = CAM_LEVELS[camLevel];
+  this.textContent = 'CAM ' + Math.round(CAM_LEVELS[camLevel] * 100) + '%'; };
+document.getElementById('reset').onclick = resetCards;
+document.getElementById('debug').onclick = function(){ debugOn = !debugOn;
+  this.classList.toggle('off', !debugOn); };
+document.getElementById('retry').onclick = () => startCamera();
+document.getElementById('jarvis').onclick = () => setJarvis(!JARVIS_ON);
+addEventListener('keydown', e => { if (e.key === 'h') document.getElementById('hands').click();
+  if (e.key === 'v') document.getElementById('camvis').click();
+  if (e.key === 'd') document.getElementById('debug').click();
+  if (e.key === 'j') setJarvis(!JARVIS_ON);
+  if (e.key === 'r') resetCards(); });
+if (Q.has('jarvis')) setJarvis(true);
+
+/* ---------- hooks + self-test ---------- */
+window.__holo = { cards: () => CARDS.map(c => ({ title: c.title, kind: c.kind, x: c.x, y: c.y,
+    s: c.s, docked: c.docked, open: c.open })),
+  hands: HANDS, ingest: ingestHands, synth: synthHand, metrics: handMetrics, drag,
+  ink: () => ink.filter(p => !p.break).length, raw: RAW, gl: () => THREE_OK,
+  jarvis: setJarvis, caption: () => captionEl.textContent,
+  sum: t => { const c = CARDS.find(x => x.title === t || x.name === t); if (c) summarize(c); return !!c; } };
+statusEl.textContent = SIM ? 'SIM MODE' : 'waiting for camera…';
+
+if (Q.has('probe')) setTimeout(async () => {
+  const R = [];
+  const ok = (name, cond) => R.push((cond ? 'PASS:' : 'FAIL:') + name);
+  const warm = (nx2, ny2) => { for (let w = 0; w < 3; w++) ingestHands([synthHand(nx2, ny2, 'open')]); };
+  const aim = (e) => ({ nx: 1 - e.x/W, ny: e.y/H });
+  try {
+    const mo = handMetrics(synthHand(.5,.5,'open')), mp2 = handMetrics(synthHand(.5,.5,'pinch')),
+          mf = handMetrics(synthHand(.5,.5,'fist'));
+    ok('gates', mo.pinch > PINCH_OUT && mp2.pinch < PINCH_IN && mf.fist && mo.open);
+    // open a folder orb by tapping it
+    const orb = CARDS.find(c => c.kind === 'folder');
+    orb.x = W*.4; orb.y = H*.35; orb.vx = orb.vy = 0; orb.docked = false;
+    // park the other orbs clear of the tap — with a real vault (6+ orbs) small
+    // windows crowd, and the z-order law would rightly hand the tap to whoever
+    // is on top; the test aims at THIS orb, so give it clean air
+    for (const o of CARDS) if (o !== orb && o.kind === 'folder'){ o.x = -600; o.y = -600; o.vx = o.vy = 0; }
+    const n0 = CARDS.length, oa = aim(orb);
+    warm(oa.nx, oa.ny);
+    ingestHands([synthHand(oa.nx, oa.ny, 'pinch')]);
+    ingestHands([synthHand(oa.nx, oa.ny, 'pinch')]);   // PINCH_EARN: entries take 2 frames
+    ingestHands([synthHand(oa.nx, oa.ny, 'open')]);
+    ok('openOrb', orb.open === true && CARDS.length > n0);
+    ingestHands([]);
+    // grab a spawned file card, drag, flick
+    const fc = CARDS.find(c => c.kind === 'note');
+    fc.x = W*.5; fc.y = H*.55; fc.tx = fc.ty = null; fc.vx = fc.vy = 0; fc.s = fc.sT = 1;
+    const fa = aim(fc); const x0 = fc.x;
+    warm(fa.nx, fa.ny);
+    ingestHands([synthHand(fa.nx, fa.ny, 'pinch')]);
+    ingestHands([synthHand(fa.nx, fa.ny, 'pinch')]);
+    ok('grab', drag.card === fc);
+    for (let k=1;k<=8;k++) ingestHands([synthHand(fa.nx - k*.02, fa.ny, 'pinch')]);
+    ok('drag', Math.abs(fc.x - x0) > 60);
+    ingestHands([synthHand(fa.nx-.18, fa.ny, 'open')]);
+    ok('flick', Math.hypot(fc.vx, fc.vy) > 3);
+    ingestHands([]);
+    // dock: whatever the z-order grabs must dock
+    const d = CARDS.find(c => c.kind === 'note' && c !== fc) || fc;
+    d.x = W*.28; d.y = H*.3; d.tx = d.ty = null; d.vx = d.vy = 0; d.docked = false; d.s = d.sT = 1;
+    const da = aim(d), tgt = 1 - (W-30)/W;
+    warm(da.nx, da.ny);
+    ingestHands([synthHand(da.nx, da.ny, 'pinch')]);
+    ingestHands([synthHand(da.nx, da.ny, 'pinch')]);
+    const dg = drag.card;
+    for (let k=0;k<=8;k++) ingestHands([synthHand(da.nx + (tgt-da.nx)*k/8, da.ny, 'pinch')]);
+    for (let k=0;k<6;k++) ingestHands([synthHand(tgt, da.ny, 'pinch')]);
+    ingestHands([synthHand(tgt, da.ny, 'open')]);
+    ok('dock', !!dg && dg.docked === true);
+    ingestHands([]);
+    // two-hand zoom in empty corners
+    const zc = CARDS.find(c => c.kind === 'note' && !c.docked) || CARDS[0];
+    const zs = zc.sT ?? 1;
+    for (let k=0;k<=14;k++) ingestHands([synthHand(.86+k*.008,.84,'pinch'), synthHand(.14-k*.008,.84,'pinch')]);
+    ingestHands([]);
+    ok('zoom', Math.abs((zc.sT ?? 1) - zs) > .02);
+    const b0 = beams.length;
+    ingestHands([synthHand(.08,.12,'open')]);
+    ingestHands([synthHand(.08,.12,'fist')]);
+    ok('pull', beams.length > b0);
+    const sh0 = shocks.length;
+    ingestHands([synthHand(.7,.5,'fist'), synthHand(.3,.5,'fist')]);
+    ingestHands([synthHand(.53,.5,'fist'), synthHand(.47,.5,'fist')]);
+    ok('clap', shocks.length > sh0);
+    ingestHands([]);
+    // tap a file card → reader opens; any pinch closes
+    const rc = CARDS.find(c => c.kind === 'note' && !c.docked) || fc;
+    rc.x = W*.38; rc.y = H*.44; rc.tx = rc.ty = null; rc.vx = rc.vy = 0; rc.docked = false; rc.s = rc.sT = 1;
+    const ra = aim(rc);
+    warm(ra.nx, ra.ny);
+    ingestHands([synthHand(ra.nx, ra.ny, 'pinch')]);
+    ingestHands([synthHand(ra.nx, ra.ny, 'pinch')]);
+    ingestHands([synthHand(ra.nx, ra.ny, 'open')]);
+    ok('open', reader.open === true);
+    ingestHands([synthHand(.5, .9, 'pinch')]);
+    ingestHands([synthHand(.5, .9, 'pinch')]);
+    ok('close', reader.open === false);
+    ingestHands([synthHand(.5, .9, 'open')]); ingestHands([]);
+    // 3D twist
+    const o = CARDS.find(cc => cc.kind === 'obj');
+    if (THREE_OK && o){
+      o.x = W*.6; o.y = H*.6; o.vx = o.vy = 0; o.docked = false;
+      const oaim = aim(o);
+      const rot = (h, th) => { const c4 = h[4], c8 = h[8];
+        const mx = (c4.x+c8.x)/2, my = (c4.y+c8.y)/2;
+        const rr = p => ({ x: mx + (p.x-mx)*Math.cos(th) - (p.y-my)*Math.sin(th),
+                           y: my + (p.x-mx)*Math.sin(th) + (p.y-my)*Math.cos(th) });
+        const out = h.slice(); out[4] = rr(c4); out[8] = rr(c8); return out; };
+      warm(oaim.nx, oaim.ny);
+      ingestHands([synthHand(oaim.nx, oaim.ny, 'pinch')]);
+      ingestHands([synthHand(oaim.nx, oaim.ny, 'pinch')]);
+      const grabbedObj = drag.card === o, r0 = o.mesh.rotation.y;
+      for (let k = 1; k <= 6; k++) ingestHands([rot(synthHand(oaim.nx, oaim.ny, 'pinch'), k * .12)]);
+      ok('spin', grabbedObj && Math.abs(o.mesh.rotation.y - r0) > .05);
+      ingestHands([synthHand(oaim.nx, oaim.ny, 'open')]); ingestHands([]);
+    } else ok('spin', !THREE_OK);
+    // z-order: topmost wins over a nearer hidden center
+    const flats = CARDS.filter(cc => cc.kind === 'note');
+    if (flats.length >= 2){
+      const A = flats[0], B = flats[flats.length - 1];
+      for (const other of CARDS) if (other !== A && other !== B){ other.x = -800; other.y = -800; other.tx = other.ty = null; }
+      A.x = W*.5; A.y = H*.6; B.x = W*.5 + 60; B.y = H*.6;
+      A.tx = A.ty = B.tx = B.ty = null; A.vx = A.vy = B.vx = B.vy = 0; A.docked = B.docked = false;
+      A.s = A.sT = B.s = B.sT = 1;
+      // cursor inside BOTH boxes but nearer A's center — the TOPMOST (B) must win
+      ok('target', targetAt({ x: W*.5 + 20, y: H*.6 }) === B);
+    } else ok('target', true);
+    ingestHands([]);
+    // flick-to-dismiss: a hard-thrown note sails off-screen and evaporates
+    const dn = CARDS.find(cc => cc.kind === 'note' && !cc.docked);
+    if (dn){
+      dn.x = 100; dn.y = H*.4; dn.tx = dn.ty = null; dn.docked = false; dn.vx = -60; dn.vy = 0;
+      for (let k = 0; k < 10 && CARDS.includes(dn); k++) physics();
+      ok('dismiss', !CARDS.includes(dn));
+    } else ok('dismiss', true);
+    // two-hand STRETCH a note past 1.7× → it opens in the reader
+    closeReader();
+    const sn = CARDS.find(cc => cc.kind === 'note' && !cc.docked);
+    if (sn){
+      sn.x = W*.5; sn.y = H*.5; sn.tx = sn.ty = null; sn.vx = sn.vy = 0; sn.s = sn.sT = 1; sn.docked = false;
+      const sa = aim(sn);
+      warm(sa.nx, sa.ny);
+      ingestHands([synthHand(sa.nx, sa.ny, 'pinch')]);
+      for (let w = 0; w < 3; w++)
+        ingestHands([synthHand(sa.nx, sa.ny, 'pinch'), synthHand(sa.nx + .09, sa.ny, 'open')]);
+      let opened = false;
+      for (let k = 0; k <= 24 && !opened; k++){
+        ingestHands([synthHand(sa.nx, sa.ny, 'pinch'), synthHand(sa.nx + .09 + k*.02, sa.ny, 'pinch')]);
+        opened = reader.open;
+      }
+      ok('stretch', opened);
+      closeReader(); ingestHands([]);
+    } else ok('stretch', true);
+    // INK: a pointing hand draws light in the air
+    closeReader(); ingestHands([]);
+    const ip0 = ink.filter(p => !p.break).length;
+    for (let k = 0; k <= 8; k++) ingestHands([synthHand(.3 + k*.03, .4, 'point')]);
+    ok('ink', ink.filter(p => !p.break).length >= ip0 + 4);
+    ingestHands([]);
+    // REPULSOR: open palm thrusts at the camera (span balloons) → radial blast
+    const pc = CARDS.find(cc => cc.kind === 'note' && !cc.docked) || CARDS[0];
+    pc.x = W*.5 + 120; pc.y = H*.5; pc.tx = pc.ty = null; pc.vx = pc.vy = 0; pc.docked = false;
+    const sh1 = shocks.length;
+    for (let k = 0; k <= 6; k++) ingestHands([synthHand(.5, .5, 'open', .07 + k*.008)]);
+    ok('push', shocks.length > sh1 && pc.vx > 0);
+    ingestHands([]);
+    // PALM SCROLL: reader open, an open palm wipes the page up/down
+    const scn = CARDS.find(cc => cc.kind === 'note') || fc;
+    if (scn){
+      openReader(scn);
+      readerEl.querySelector('pre').textContent = Array(400).fill('scroll test line').join('\n');
+      paneEl.scrollTop = 300;
+      const sc0 = paneEl.scrollTop;
+      for (let k = 0; k <= 6; k++) ingestHands([synthHand(.5, .5 - k*.03, 'open')]);
+      ok('scroll', Math.abs(paneEl.scrollTop - sc0) > 12);
+      closeReader(); ingestHands([]);
+    } else ok('scroll', true);
+    // SQUEEZE: crush a note between both pinches → TL;DR toast + spoken gist
+    closeReader(); ingestHands([]);
+    const qn = CARDS.find(cc => cc.kind === 'note' && !cc.docked);
+    if (qn){
+      qn.x = W*.5; qn.y = H*.5; qn.tx = qn.ty = null; qn.vx = qn.vy = 0; qn.s = qn.sT = 1; qn.docked = false;
+      const qa = aim(qn);
+      warm(qa.nx, qa.ny);
+      ingestHands([synthHand(qa.nx, qa.ny, 'pinch')]);
+      for (let w = 0; w < 3; w++)
+        ingestHands([synthHand(qa.nx, qa.ny, 'pinch'), synthHand(qa.nx + .09, qa.ny, 'open')]);
+      for (let k = 0; k <= 30 && LAST_SUM !== qn.title; k++)
+        ingestHands([synthHand(qa.nx, qa.ny, 'pinch'),
+                     synthHand(qa.nx + Math.max(.015, .09 - k*.005), qa.ny, 'pinch')]);
+      ok('squeeze', LAST_SUM === qn.title && !drag.card);
+      ingestHands([]);
+    } else ok('squeeze', true);
+    // JARVIS MODE: toggle on → gold skin + a spoken greeting lands in the caption bar
+    setJarvis(true);
+    ok('jarvis', document.body.classList.contains('jarvis') &&
+      captionEl.textContent.length > 0);
+    setJarvis(false);
+    // TIDY: both palms sweep down together → the board grids up
+    const loose0 = CARDS.filter(cc => !cc.docked).length;
+    for (let k = 0; k <= 5; k++)
+      ingestHands([synthHand(.35, .3 + k*.05, 'open'), synthHand(.65, .3 + k*.05, 'open')]);
+    ok('tidy', loose0 > 0 && CARDS.some(cc => !cc.docked && cc.tx != null));
+    ingestHands([]);
+    // PEACE ✌ held = the one-handed tidy (same cooldown as the sweep — wait it out)
+    await new Promise(r => setTimeout(r, 2600));
+    for (const c of CARDS) if (!c.docked){ c.tx = c.ty = null; }
+    const loose2 = CARDS.filter(cc => !cc.docked).length;
+    for (let k = 0; k < 10; k++) ingestHands([synthHand(.5, .45, 'peace')]);
+    ok('peace', loose2 > 0 && CARDS.some(cc => !cc.docked && cc.tx != null));
+    ingestHands([]);
+  } catch (e) { R.push('FAIL:exception ' + (e && e.message)); }
+  const pass = R.filter(r => r.startsWith('PASS')).length;
+  document.title = `PROBE ${pass}/${R.length} · ` + R.join(' ');
+}, 600);
+</script>
+</body></html>
