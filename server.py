@@ -85,6 +85,8 @@ class H(BaseHTTPRequestHandler):
         b = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if ctype.startswith("text/html"):
+            self.send_header("Cache-Control", "no-store")   # a stale cached page hid real fixes once
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)

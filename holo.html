@@ -731,41 +731,45 @@ async function startGL(){
     glCam = new T.PerspectiveCamera(45, W/H, 1, 8000);
     const key = new T.DirectionalLight(0xaaffe0, 1.6); key.position.set(200, 300, 500);
     glScene.add(key); glScene.add(new T.AmbientLight(0x224437, 1.4));
-    const mk = (geo, color, emiss) => new T.Mesh(geo, new T.MeshStandardMaterial({
-      color, emissive: emiss, emissiveIntensity: .5, metalness: .72, roughness: .24 }));
-    // the hero: a J.A.R.V.I.S. arc reactor — steel housing, glowing coil ring,
-    // 8 spokes, hot core. Grab it and TWIST to spin; inertia carries it.
-    const jarvisReactor = (() => {
+    // ONE hero object: a J.A.R.V.I.S. HOLOGRAM — translucent glass + additive cyan
+    // glow + drawn wireframe edges, the camera feed visible THROUGH it (his 2026-08-26
+    // reference: the hologram coin; solid colorful meshes read as plastic toys).
+    // Grab it and TWIST to spin — it turns like a hologram coin.
+    const jarvisHolo = (() => {
       const g = new T.Group();
-      const steel = new T.MeshStandardMaterial({ color: 0x2a3440, emissive: 0x14303a,
-        emissiveIntensity: .35, metalness: .85, roughness: .28 });
-      const glow = new T.MeshStandardMaterial({ color: 0x0d3a44, emissive: 0x35e0ff,
-        emissiveIntensity: 1.1, metalness: .55, roughness: .3 });
-      g.add(new T.Mesh(new T.TorusGeometry(52, 7, 20, 72), steel));
-      g.add(new T.Mesh(new T.TorusGeometry(34, 4.5, 16, 64), glow));
-      g.add(new T.Mesh(new T.SphereGeometry(15, 24, 24), new T.MeshStandardMaterial({
-        color: 0x9feaff, emissive: 0x7df3ff, emissiveIntensity: 2.2, metalness: .1, roughness: .15 })));
-      for (let k = 0; k < 8; k++){
-        const sp = new T.Mesh(new T.BoxGeometry(16, 7, 7), steel);
-        const a2 = k / 8 * Math.PI * 2;
-        sp.position.set(Math.cos(a2) * 43, Math.sin(a2) * 43, 0);
-        sp.rotation.z = a2;
-        g.add(sp);
+      const line = (geo, op) => new T.LineSegments(new T.EdgesGeometry(geo, 20),
+        new T.LineBasicMaterial({ color: 0xa8ecff, transparent: true, opacity: op ?? .85,
+          blending: T.AdditiveBlending, depthWrite: false }));
+      const glass = (geo, op) => new T.Mesh(geo, new T.MeshBasicMaterial({
+        color: 0x5fd4ef, transparent: true, opacity: op ?? .1,
+        blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+      const disc = new T.CylinderGeometry(95, 95, 5, 72, 1, false);
+      g.add(glass(disc, .085));                          // the glass coin body
+      g.add(line(disc, .8));                             // double-circle rim (the drawn edge)
+      const band = new T.CylinderGeometry(64, 64, 6, 64, 1, true);
+      g.add(glass(band, .3));                            // inner glowing band
+      const tri = new T.CylinderGeometry(30, 30, 7, 3, 1, false);
+      tri.rotateY(Math.PI / 6);
+      g.add(glass(tri, .28)); g.add(line(tri, .95));     // the arc-reactor TRIANGLE core
+      for (let k = 0; k < 12; k++){                      // radial ticks on the rim
+        const t2 = new T.BoxGeometry(14, 4, 2.5);
+        const a2 = k / 12 * Math.PI * 2;
+        const m2 = glass(t2, .5);
+        m2.position.set(Math.cos(a2) * 80, 0, Math.sin(a2) * 80);
+        m2.rotation.y = -a2;
+        g.add(m2);
       }
-      g.rotation.x = .35;                      // slight tilt so the depth reads
+      g.rotation.x = Math.PI / 2 - .12;                  // face the viewer, slight tilt
       return g;
     })();
     const objs = [
-      { title: 'J.A.R.V.I.S.', mesh: jarvisReactor },
-      { title: 'TORUS CORE',  mesh: mk(new T.TorusKnotGeometry(40, 12, 130, 18), 0x1d3f36, 0x2effbe) },
-      { title: 'THE REACTOR', mesh: mk(new T.TorusGeometry(44, 11, 26, 64),      0x3a2f14, 0xf0c064) },
-      { title: 'THE CORE',    mesh: mk(new T.IcosahedronGeometry(48, 1),          0x16323e, 0x7de4ff) },
+      { title: 'J.A.R.V.I.S.', mesh: jarvisHolo, spin: { x: 0, y: .006 } },
     ];
     objs.forEach((o, i) => {
       glScene.add(o.mesh);
       CARDS.push({ el: null, kind: 'obj', mesh: o.mesh, title: o.title, full: '',
         x: W*.82 - i*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,
-        spin: { x: .003, y: .007 } });
+        spin: o.spin || { x: .003, y: .007 } });
     });
     sizeGL(); THREE_OK = true;
     postDiag({ gl: 'ok' });
