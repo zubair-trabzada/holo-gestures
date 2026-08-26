@@ -18,7 +18,7 @@ import json, os, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-PORT = 4890
+PORT = int(os.environ.get("HOLO_PORT", "4890"))
 
 def notes_dir():
     try:
