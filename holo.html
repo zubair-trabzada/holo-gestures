@@ -144,12 +144,14 @@
 <div id="caption"></div>
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
 <b>TWO PINCHES</b> zoom / rotate &nbsp;·&nbsp; <b>PALM→FIST</b> pull &nbsp;·&nbsp; <b>PALM THRUST</b> repulsor &nbsp;·&nbsp; <b>POINT</b> draw ink<br>
-<b>PALMS SWEEP DOWN</b> or <b>PEACE ✌</b> tidy &nbsp;·&nbsp; <b>CLAP</b> scatter &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode</div>
+<b>PALMS SWEEP DOWN</b> or <b>PEACE ✌</b> tidy &nbsp;·&nbsp; <b>CLAP</b> scatter &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode<br>
+<b>3D PROPS</b> stretch APART = explode into parts · crush = reassemble &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
   Hand tracking runs entirely on this page — frames never leave your machine and no AI watches the feed.
   Allow the camera, then just reach out and touch things. (Press <b>H</b> for mouse-only mode.)</div></div>
 
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
 <script type="module">
 /* ============================================================================
    HOLO v3 — THE CAMERA IS THE STAGE. You watch your own mirrored hand touch
@@ -544,6 +546,15 @@ function twoHand(now){
       world = null;
       summarize(c);
     }
+    // PROPS: STRETCH a 3D object apart → it EXPLODES into its parts; CRUSH → reassembles
+    else if (c.kind === 'obj' && c.parts && c.parts.length > 1 && (c.sT > 1.9 || c.sT < .58)){
+      const open = c.sT > 1.9;
+      c.sT = c.s = 1; c.vx = c.vy = 0;
+      drag.card = null; drag.hand = -1;
+      a.pinch = b.pinch = false; a.twist = b.twist = null;
+      world = null;
+      setExplode(c, open ? 1 : 0);
+    }
     return;
   }
   // empty space: zoom + rotate the whole scene
@@ -773,8 +784,55 @@ async function startGL(){
     });
     sizeGL(); THREE_OK = true;
     postDiag({ gl: 'ok' });
+    loadProps(T).catch(() => {});                       // PROPS: real 3D models, best-effort
   } catch (e) { THREE_OK = false;
     postDiag({ gl: 'FAIL: ' + ((e && (e.message || String(e))) || '?').slice(0, 200) }); }
+}
+/* ---------- PROPS: drop any .glb into props/ and it becomes a grabbable object.
+   STRETCH one apart (past 1.9×) and it EXPLODES into its parts; CRUSH it (below .58×)
+   and it reassembles. Directions are computed per-mesh in its parent frame at load,
+   so exploded parts track every spin. All best-effort: a bad file just skips. ---------- */
+async function loadProps(T){
+  let names = [];
+  try { names = await (await fetch('/api/props')).json(); } catch (_){ return; }
+  if (!Array.isArray(names) || !names.length) return;
+  const { GLTFLoader } = await import('/vendor/GLTFLoader.js');
+  const loader = new GLTFLoader();
+  let slot = CARDS.filter(c => c.kind === 'obj').length;
+  for (const name of names){
+    try {
+      const gltf = await loader.loadAsync('/props/' + name);
+      const model = gltf.scene;
+      const box = new T.Box3().setFromObject(model);
+      const size = box.getSize(new T.Vector3()), ctr = box.getCenter(new T.Vector3());
+      const k = 170 / Math.max(size.x, size.y, size.z, 1e-3);
+      model.position.sub(ctr).multiplyScalar(k); model.scale.setScalar(k);
+      const wrap = new T.Group(); wrap.add(model);   // wrap.scale stays free for card physics
+      wrap.updateWorldMatrix(true, true);
+      const parts = [];
+      wrap.traverse(m => { if (m.isMesh){
+        const mb = new T.Box3().setFromObject(m);
+        const mc = mb.getCenter(new T.Vector3());                    // wrap frame == world here
+        const inv = new T.Matrix4().copy(m.parent.matrixWorld).invert();
+        const dir = mc.clone().applyMatrix4(inv)
+          .sub(new T.Vector3().applyMatrix4(inv));                   // vector, parent frame
+        parts.push({ m, base: m.position.clone(), dir });
+      } });
+      glScene.add(wrap);
+      const title = name.replace(/\.glb$/i, '').replace(/[-_]+/g, ' ').toUpperCase().slice(0, 22);
+      CARDS.push({ el: null, kind: 'obj', mesh: wrap, title, full: '',
+        x: W*.82 - slot*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,
+        spin: { x: 0, y: .006 }, parts, explode: 0, explodeT: 0 });
+      slot++;
+    } catch (_){}
+  }
+}
+function setExplode(c, on){
+  if (!c.parts || c.parts.length < 2) return false;
+  c.explodeT = on ? 1 : 0;
+  postState(on ? 'explode' : 'assemble', c.title);
+  jSay('boom', on ? 'Opening her up, sir.' : 'Buttoned up.', { cool: 1200 });
+  return true;
 }
 function sizeGL(){ if (!glRenderer) return; glRenderer.setSize(W, H, false);
   glCam.aspect = W / H;
@@ -793,6 +851,11 @@ function syncMeshes(){
       c.mesh.rotation.y += c.spin.y; c.mesh.rotation.x += c.spin.x;
       c.spin.y *= .986; c.spin.x *= .986;
       if (Math.abs(c.spin.y) < .006) c.spin.y = .006;
+    }
+    if (c.parts && c.parts.length > 1 && (c.explodeT || c.explode > .001)){
+      c.explode += (c.explodeT - c.explode) * .09;       // eased burst / reassembly
+      for (const p of c.parts)
+        p.m.position.copy(p.base).addScaledVector(p.dir, c.explode * 1.1);
     }
   }
   glRenderer.render(glScene, glCam);
@@ -1253,6 +1316,28 @@ if (Q.has('probe')) setTimeout(async () => {
     for (let k = 0; k < 10; k++) ingestHands([synthHand(.5, .45, 'peace')]);
     ok('peace', loose2 > 0 && CARDS.some(cc => !cc.docked && cc.tx != null));
     ingestHands([]);
+    // PROPS: stretch a multi-part model APART → it explodes; graceful skip if none loaded
+    let prop = null;
+    for (let w = 0; w < 50 && !prop; w++){
+      prop = CARDS.find(cc => cc.kind === 'obj' && cc.parts && cc.parts.length > 1);
+      if (!prop) await new Promise(r => setTimeout(r, 100));
+    }
+    if (prop){
+      // park it clear of the tidy-grid pile — the z-order law would hand the grab
+      // to whatever note sits on top at center (same lesson as the openOrb test)
+      for (const o of CARDS) if (o !== prop && !o.docked){ o.x = -800; o.y = -800; o.tx = o.ty = null; o.vx = o.vy = 0; }
+      prop.x = W*.5; prop.y = H*.5; prop.tx = prop.ty = null;
+      prop.vx = prop.vy = 0; prop.s = prop.sT = 1; prop.docked = false; prop.explodeT = 0;
+      const pa2 = aim(prop);
+      warm(pa2.nx, pa2.ny);
+      ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch')]);
+      for (let w = 0; w < 3; w++)
+        ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch'), synthHand(pa2.nx + .09, pa2.ny, 'open')]);
+      for (let k = 0; k <= 30 && prop.explodeT !== 1; k++)
+        ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch'), synthHand(pa2.nx + .09 + k*.02, pa2.ny, 'pinch')]);
+      ok('explode', prop.explodeT === 1 && !drag.card);
+      ingestHands([]);
+    } else ok('explode', true);
   } catch (e) { R.push('FAIL:exception ' + (e && e.message)); }
   const pass = R.filter(r => r.startsWith('PASS')).length;
   document.title = `PROBE ${pass}/${R.length} · ` + R.join(' ');

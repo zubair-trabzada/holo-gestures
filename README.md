@@ -48,6 +48,15 @@ Point `holo.json` at any folder of markdown files:
 
 Subfolders become orbs. It ships pointed at `sample-notes/` so it works the second you run it.
 
+## 3D props — drop in ANY model
+
+Put any `.glb` file into the `props/` folder and it appears on the deck as a real 3D object you can grab, throw, spin (twist while pinching), and dock. Two photoreal, public-domain models ship with it:
+
+- **ANTIQUE CAMERA** — vintage camera on a tripod
+- **LANTERN** — classic street lantern
+
+**Stretch a model APART with two hands and it EXPLODES into its parts. Crush it and it reassembles.** Any multi-mesh GLB gets this for free — skulls, engines, product shots, whatever you drop in (thousands of free models exist as .glb downloads).
+
 ## Extras
 
 - `?sim=1` — a scripted demo loop plays with synthetic hands, no camera needed
@@ -64,4 +73,6 @@ Watch it get built: https://www.youtube.com/@mygptworkshop
 
 ## License
 
-Original code: MIT (see LICENSE). The `vendor/` folder contains Google MediaPipe Tasks Vision (Apache-2.0) and three.js (MIT), self-hosted so ad-blockers and offline machines can't break the tracking. Note: both `vendor/wasm/vision_wasm_*.js` files carry a one-line shim at the top (marked HOLO SHIM) that fixes a crash in the release build of MediaPipe's wasm glue. If you re-download MediaPipe yourself, you need to re-apply it.
+Original code: MIT (see LICENSE). The `vendor/` folder contains Google MediaPipe Tasks Vision (Apache-2.0) and three.js incl. GLTFLoader (MIT), self-hosted so ad-blockers and offline machines can't break the tracking. Note: both `vendor/wasm/vision_wasm_*.js` files carry a one-line shim at the top (marked HOLO SHIM) that fixes a crash in the release build of MediaPipe's wasm glue. If you re-download MediaPipe yourself, you need to re-apply it.
+
+Sample models in `props/` from the Khronos glTF-Sample-Assets repository, both CC0 (public domain): "Antique Camera" (Maximillan Kamps / UX3D) and "Lantern" (Microsoft / Frank Galligan). Swap in your own models freely — any glTF-Binary (.glb) works.

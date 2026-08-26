@@ -92,7 +92,8 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(b)
 
     MIME = {".mjs": "text/javascript", ".js": "text/javascript",
-            ".wasm": "application/wasm", ".task": "application/octet-stream"}
+            ".wasm": "application/wasm", ".task": "application/octet-stream",
+            ".glb": "model/gltf-binary"}
 
     def do_GET(self):
         p = self.path.split("?")[0]
@@ -102,11 +103,19 @@ class H(BaseHTTPRequestHandler):
                                   "text/html; charset=utf-8")
             except OSError:
                 return self._send(500, {"error": "holo.html missing"})
-        if p.startswith("/vendor/"):
+        if p == "/api/props":
+            # PROPS: any .glb dropped into props/ becomes a grabbable 3D object
+            try:
+                names = sorted(x for x in os.listdir(os.path.join(ROOT, "props"))
+                               if x.endswith(".glb"))[:6]
+            except OSError:
+                names = []
+            return self._send(200, names)
+        if p.startswith(("/vendor/", "/props/")):
             # self-hosted tracking libs: no CDN in the path, so ad-block extensions
             # and offline machines can't kill the hand tracking
             safe = os.path.normpath(p.lstrip("/"))
-            if safe.startswith("vendor") and ".." not in safe:
+            if safe.startswith(("vendor", "props")) and ".." not in safe:
                 full = os.path.join(ROOT, safe)
                 if os.path.isfile(full):
                     ext = os.path.splitext(full)[1]
