@@ -412,7 +412,7 @@ const HANDS = [mkHandState(), mkHandState()];
 const drag = { card:null, hand:-1, dx:0, dy:0 };
 let world = null;
 let lastClap = -9e9, shocks = [], beams = [];
-let camOn = false, tracking = true;
+let camOn = false, tracking = true, DELEGATE = 'none';
 /* green-dot forensics: a PERSISTENT false detection (a face, a lamp) survives the
    6-frame render gate — so phantoms are killed at three layers instead:
    confidence floor .6 at the tracker, the span gate here, the stale watchdog below */
@@ -1006,9 +1006,9 @@ async function startCamera(){
                              minHandDetectionConfidence: .6,
                              minHandPresenceConfidence: .6,
                              minTrackingConfidence: .6 });
-      try { landmarker = await mp.HandLandmarker.createFromOptions(files, opts('GPU')); }
+      try { landmarker = await mp.HandLandmarker.createFromOptions(files, opts('GPU')); DELEGATE = 'GPU'; }
       catch (ge){ console.error('[holo] GPU delegate failed, trying CPU:', ge);
-        landmarker = await mp.HandLandmarker.createFromOptions(files, opts('CPU')); }
+        landmarker = await mp.HandLandmarker.createFromOptions(files, opts('CPU')); DELEGATE = 'CPU'; }
     } catch (e) {
       camStarting = false;
       console.error('[holo] tracking init failed at stage', stage, e);
@@ -1020,7 +1020,8 @@ async function startCamera(){
              gpu: !!window.WebGLRenderingContext, win: [W, H] });
       return;
     }
-    postDiag({ fail: null, stage: 'tracking-ready', localImportError: localErr, ua: navigator.userAgent });
+    postDiag({ fail: null, stage: 'tracking-ready', delegate: DELEGATE,
+               localImportError: localErr, ua: navigator.userAgent });
   }
   let stream = null;
   try {
@@ -1048,8 +1049,14 @@ async function startCamera(){
       const hd = res.handednesses || res.handedness || [];
       RAW.n = (res.landmarks || []).length;                       // pre-filter truth for DEBUG
       RAW.scores = hd.map(h => (h && h[0] && h[0].score) ?? 1);
+      // NOTE the semantics: handednesses[].score is the LEFT-vs-RIGHT classifier
+      // confidence, NOT detection quality. A palm-forward spread hand (how every
+      // gesture starts) is chirality-AMBIGUOUS and scores ~.5-.7 — the old .8 gate
+      // was throwing away his REAL hand while confident phantoms survived. Detection
+      // quality is enforced at the tracker (minHandDetection/Presence/Tracking .6);
+      // this stays only as a .5 sanity floor.
       let pair = (res.landmarks || []).map((lm, i) => ({ lm, s: RAW.scores[i] ?? 1 }))
-        .filter(p2 => p2.s > .8);
+        .filter(p2 => p2.s > .5);
       // GHOST-HAND DEDUPE: MediaPipe often reports ONE physical hand as TWO overlapping
       // detections, and the ghost paints a second cursor shadowing the finger (his
       // "green things following my fingers"). Two palms closer than ~1.35 hand-spans
