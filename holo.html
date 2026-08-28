@@ -841,11 +841,14 @@ async function loadProps(T){
   let slot = CARDS.filter(c => c.kind === 'obj').length;
   for (const name of names){
     try {
+      const POSE = { 'apollo-11-module.glb': { rx: .15 },
+                     'triceratops.glb': { ry: -Math.PI / 2, rx: .62, scale: 2.1 } };
+      const pose = POSE[name] || {};
       const gltf = await loader.loadAsync('/props/' + name);
       const model = gltf.scene;
       const box = new T.Box3().setFromObject(model);
       const size = box.getSize(new T.Vector3()), ctr = box.getCenter(new T.Vector3());
-      const k = 170 / Math.max(size.x, size.y, size.z, 1e-3);
+      const k = (170 * (pose.scale || 1)) / Math.max(size.x, size.y, size.z, 1e-3);
       model.position.sub(ctr).multiplyScalar(k); model.scale.setScalar(k);
       const wrap = new T.Group(); wrap.add(model);   // wrap.scale stays free for card physics
       wrap.updateWorldMatrix(true, true);
@@ -880,9 +883,7 @@ async function loadProps(T){
         parts.push({ m, base: m.position.clone(), dir });
       } });
       glScene.add(wrap);
-      const POSE = { 'human-skull.glb': { rx: -.25, ry: Math.PI } };   // face the viewer
-      const pose = POSE[name];
-      if (pose){ wrap.rotation.x = pose.rx || 0; wrap.rotation.y = pose.ry || 0; }
+      wrap.rotation.x = pose.rx || 0; wrap.rotation.y = pose.ry || 0;
       const title = name.replace(/\.glb$/i, '').replace(/[-_]+/g, ' ').toUpperCase().slice(0, 22);
       CARDS.push({ el: null, kind: 'obj', mesh: wrap, title, full: '',
         x: W*.82 - slot*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,

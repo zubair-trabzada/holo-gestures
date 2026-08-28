@@ -50,9 +50,10 @@ Subfolders become orbs. It ships pointed at `sample-notes/` so it works the seco
 
 ## 3D props — drop in ANY model
 
-Put any `.glb` file into the `props/` folder and it appears on the deck as a real 3D object you can grab, throw, spin (twist while pinching), and dock. It ships with a showpiece:
+Put any `.glb` file into the `props/` folder and it appears on the deck as a real 3D object you can grab, throw, spin (twist while pinching), and dock. It ships with two Smithsonian showpieces:
 
-- **HUMAN SKULL** — a real Smithsonian-scanned Homo sapiens cranium (public domain)
+- **APOLLO 11 COMMAND MODULE** — the actual scan of Columbia, scorch marks and all
+- **TRICERATOPS** — a real fossil skeleton scan
 
 **Stretch a model bigger with two hands and it COMES APART — the closer you zoom, the more it separates. Shrink it and it fuses back together.** Multi-part models split at their natural seams; single-mesh scans (like the skull) are auto-split into shards at load, so everything opens up. CLAP restores the whole board to its original state.
 
@@ -74,4 +75,4 @@ Watch it get built: https://www.youtube.com/@mygptworkshop
 
 Original code: MIT (see LICENSE). The `vendor/` folder contains Google MediaPipe Tasks Vision (Apache-2.0) and three.js incl. GLTFLoader (MIT), self-hosted so ad-blockers and offline machines can't break the tracking. Note: both `vendor/wasm/vision_wasm_*.js` files carry a one-line shim at the top (marked HOLO SHIM) that fixes a crash in the release build of MediaPipe's wasm glue. If you re-download MediaPipe yourself, you need to re-apply it.
 
-The skull in `props/` is the Smithsonian Institution 3D digitization of a Homo sapiens cranium (Singa), released CC0 (public domain) at 3d.si.edu. Swap in your own models freely — any glTF-Binary (.glb) works (Draco-compressed files need decompressing first, e.g. `npx @gltf-transform/cli copy in.glb out.glb`).
+The models in `props/` are Smithsonian Institution 3D digitizations (the Apollo 11 Command Module and Triceratops horridus), released CC0 (public domain) at 3d.si.edu. Swap in your own models freely — any glTF-Binary (.glb) works (Draco-compressed files need decompressing first, e.g. `npx @gltf-transform/cli copy in.glb out.glb`).
