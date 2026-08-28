@@ -145,8 +145,8 @@
 <div id="caption"></div>
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
 <b>TWO PINCHES</b> zoom / rotate &nbsp;·&nbsp; <b>PALM→FIST</b> pull &nbsp;·&nbsp; <b>PALM THRUST</b> repulsor &nbsp;·&nbsp; <b>POINT</b> draw ink<br>
-<b>PALMS SWEEP DOWN</b> or <b>PEACE ✌</b> tidy &nbsp;·&nbsp; <b>CLAP</b> scatter &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode<br>
-<b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; <b>CLAP</b> = everything restores &nbsp;·&nbsp; drop any .glb into props/</div>
+<b>PALMS SWEEP DOWN</b> tidy &nbsp;·&nbsp; <b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode<br>
+<b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
   Hand tracking runs entirely on this page — frames never leave your machine and no AI watches the feed.
@@ -498,10 +498,11 @@ function ingestHands(rawHands){
     else if (!st.pinch && m.pinch >= PINCH_IN) st.pinchN = 0;
     else if (st.pinch && m.pinch > PINCH_OUT){ releasePinch(i); }
     else if (st.pinch){ movePinch(i, cur); }
-    // PEACE ✌ held ~8 frames = one-handed TIDY (same as the two-palm sweep)
+    // PEACE ✌ held ~8 frames = FULL RESTORE (his call: clap is camera-hostile, the
+    // static peace pose is the reliable "refresh" — tidy keeps the two-palm sweep)
     if (m.peace && !st.pinch && !reader.open){
       st.peaceN = (st.peaceN || 0) + 1;
-      if (st.peaceN === 8 && now - lastTidy > 2500){ lastTidy = now; tidyBoard(); }
+      if (st.peaceN === 8 && now - lastRestore > 2500) restoreAll(cur, now);
     } else st.peaceN = 0;
   }
   twoHand(now);
@@ -628,15 +629,20 @@ function clapCheck(now){
   lastPalmD = d;
   if (d < Math.max(160, Math.min(W,H)*.18) && va > 14 && closing){
     lastClap = now;
-    const mid = { x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 };
-    // CLAP = FULL RESTORE (his 2026-08-28 call): everything back to original size and
-    // place, fans closed, reader closed, ink wiped — a page refresh without the refresh
-    ink.length = 0;
-    closeReader();
-    for (const c of CARDS){ c.docked = false; c.s = c.sT = 1; if (c.explode != null) c.explode = 0; }
-    shocks.push({ ...mid, t: now }); postState('clear', 'all'); jSay('clear');
-    resetCards();
+    restoreAll({ x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 }, now);
   }
+}
+/* FULL RESTORE — everything back to original size and place, fans closed, reader
+   closed, ink wiped: a page refresh without the refresh. Fired by PEACE ✌ (the
+   reliable pose) and by clap. */
+let lastRestore = -9e9;
+function restoreAll(pt, now){
+  lastRestore = now;
+  ink.length = 0;
+  closeReader();
+  for (const c of CARDS){ c.docked = false; c.s = c.sT = 1; if (c.explode != null) c.explode = 0; }
+  shocks.push({ x: pt.x, y: pt.y, t: now }); postState('clear', 'all'); jSay('clear');
+  resetCards();
 }
 /* TIDY SWEEP: both palms open, swept DOWN together — the whole board snaps into a
    clean grid (high-effort two-hand gesture for a rare, powerful act, per the
@@ -1457,13 +1463,28 @@ if (Q.has('probe')) setTimeout(async () => {
       ingestHands([synthHand(.35, .3 + k*.05, 'open'), synthHand(.65, .3 + k*.05, 'open')]);
     ok('tidy', loose0 > 0 && CARDS.some(cc => !cc.docked && cc.tx != null));
     ingestHands([]);
-    // PEACE ✌ held = the one-handed tidy (same cooldown as the sweep — wait it out)
-    await new Promise(r => setTimeout(r, 2600));
-    for (const c of CARDS) if (!c.docked){ c.tx = c.ty = null; }
-    const loose2 = CARDS.filter(cc => !cc.docked).length;
+    // PEACE ✌ held = FULL RESTORE: fans close, docks clear, board re-seeds
+    await new Promise(r => setTimeout(r, 2600));           // clear the restore cooldown (clap test)
+    const dockOne = CARDS.find(cc => cc.kind === 'note');
+    if (dockOne) dockOne.docked = true;
+    const r0 = lastRestore;
     for (let k = 0; k < 10; k++) ingestHands([synthHand(.5, .45, 'peace')]);
-    ok('peace', loose2 > 0 && CARDS.some(cc => !cc.docked && cc.tx != null));
+    await new Promise(r => setTimeout(r, 700));            // async re-seed
+    ok('peace', lastRestore > r0 && CARDS.every(cc => !cc.docked) &&
+      !CARDS.some(cc => cc.kind === 'note'));
     ingestHands([]);
+    // re-open an orb so the explode test's board still has material after the restore
+    const orb3 = CARDS.find(cc => cc.kind === 'folder');
+    if (orb3){
+      orb3.x = W*.4; orb3.y = H*.35; orb3.vx = orb3.vy = 0; orb3.docked = false; orb3.tx = orb3.ty = null;
+      for (const o of CARDS) if (o !== orb3 && o.kind === 'folder'){ o.x = -600; o.y = -600; o.vx = o.vy = 0; }
+      const oa3 = aim(orb3);
+      warm(oa3.nx, oa3.ny);
+      ingestHands([synthHand(oa3.nx, oa3.ny, 'pinch')]);
+      ingestHands([synthHand(oa3.nx, oa3.ny, 'pinch')]);
+      ingestHands([synthHand(oa3.nx, oa3.ny, 'open')]);
+      ingestHands([]);
+    }
     // PROPS: stretch a multi-part model APART → it explodes; graceful skip if none loaded
     let prop = null;
     for (let w = 0; w < 50 && !prop; w++){
