@@ -59,7 +59,7 @@ Put any `.glb` file into the `props/` folder and it appears on the deck as a rea
 ## Extras
 
 - `?sim=1` — a scripted demo loop plays with synthetic hands, no camera needed
-- `?probe=1` — the built-in test battery runs the real engine on synthetic frames (this build: 22/22)
+- `?probe=1` — the built-in test battery runs the real engine on synthetic frames (this build: 23/23)
 - Mouse works as a fallback everywhere
 
 ## Want the full JARVIS?
