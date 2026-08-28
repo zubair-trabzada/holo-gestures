@@ -624,9 +624,9 @@ function clapCheck(now){
   const va = a.trail.length > 2 ? dist(a.trail[a.trail.length-1], a.trail[a.trail.length-3]) : 0;
   // galaxy field lesson: a real clap is two FLAT palms (they read "open" edge-on, then
   // MediaPipe merges them at contact) — open-ness is NOT in the gate; the RUSH is the clap
-  const closing = lastPalmD != null && lastPalmD - d > 16;
+  const closing = lastPalmD != null && lastPalmD - d > 12;
   lastPalmD = d;
-  if (d < Math.min(W,H)*.14 && va > 18 && closing){
+  if (d < Math.max(160, Math.min(W,H)*.18) && va > 14 && closing){
     lastClap = now;
     const mid = { x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 };
     // CLAP = FULL RESTORE (his 2026-08-28 call): everything back to original size and
@@ -1117,11 +1117,15 @@ async function startCamera(){
       // "green things following my fingers"). Two palms closer than ~1.35 hand-spans
       // are the same hand — keep the higher-confidence read.
       RAW.ghost = false;
-      if (pair.length === 2){
+      // NEVER dedupe two ESTABLISHED hands — a clap is two real palms rushing inside
+      // ghost distance, and merging them killed the clap (2026-08-28). Ghosts are a
+      // NEW detection born beside one live hand, not a long-tracked pair.
+      const twoLive = HANDS[0].present && HANDS[0].seen > 4 && HANDS[1].present && HANDS[1].seen > 4;
+      if (pair.length === 2 && !twoLive){
         const P2 = p2 => ({ x: (p2.lm[0].x + p2.lm[9].x)/2, y: (p2.lm[0].y + p2.lm[9].y)/2 });
         const S2 = p2 => Math.hypot(p2.lm[0].x - p2.lm[9].x, p2.lm[0].y - p2.lm[9].y);
         const dd = Math.hypot(P2(pair[0]).x - P2(pair[1]).x, P2(pair[0]).y - P2(pair[1]).y);
-        if (dd < Math.max(S2(pair[0]), S2(pair[1])) * 1.35){
+        if (dd < Math.max(S2(pair[0]), S2(pair[1])) * .7){   // true overlap only
           pair = [pair[0].s >= pair[1].s ? pair[0] : pair[1]];
           RAW.ghost = true;
         }
