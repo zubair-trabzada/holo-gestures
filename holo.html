@@ -146,7 +146,7 @@
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
 <b>TWO PINCHES</b> zoom / rotate &nbsp;·&nbsp; <b>PALM→FIST</b> pull &nbsp;·&nbsp; <b>PALM THRUST</b> repulsor &nbsp;·&nbsp; <b>POINT</b> draw ink<br>
 <b>PALMS SWEEP DOWN</b> or <b>PEACE ✌</b> tidy &nbsp;·&nbsp; <b>CLAP</b> scatter &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode<br>
-<b>3D PROPS</b> stretch APART = explode into parts · crush = reassemble &nbsp;·&nbsp; drop any .glb into props/</div>
+<b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; <b>CLAP</b> = everything restores &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
   Hand tracking runs entirely on this page — frames never leave your machine and no AI watches the feed.
@@ -401,10 +401,10 @@ function assignHands(lms){
    what separates a floaty cursor from one that feels wired to the finger. */
 function oneEuro(st, raw, now){
   const f = st.oe || (st.oe = { t: now, x: raw.x, y: raw.y, dx: 0, dy: 0 });
-  let dt = (now - f.t) / 1000; if (!(dt > 0)) dt = 1/60; if (dt > .2) dt = .2;
+  let dt = (now - f.t) / 1000; if (!(dt > 1/240)) dt = 1/60; if (dt > .2) dt = .2;  // sub-frame deltas = one camera frame
   f.t = now;
   const al = (cut) => { const r = 2 * Math.PI * cut * dt; return r / (r + 1); };
-  const ad = al(1.0);
+  const ad = al(2.5);   // derivative cutoff: velocity estimate must build FAST or slow motions lag
   f.dx += ((raw.x - f.x) / dt - f.dx) * ad;
   f.dy += ((raw.y - f.y) / dt - f.dy) * ad;
   const a = al(1.3 + .009 * Math.hypot(f.dx, f.dy));
@@ -591,15 +591,7 @@ function twoHand(now){
       world = null;
       summarize(c);
     }
-    // PROPS: STRETCH a 3D object apart → it EXPLODES into its parts; CRUSH → reassembles
-    else if (c.kind === 'obj' && c.parts && c.parts.length > 1 && (c.sT > 1.9 || c.sT < .58)){
-      const open = c.sT > 1.9;
-      c.sT = c.s = 1; c.vx = c.vy = 0;
-      drag.card = null; drag.hand = -1;
-      a.pinch = b.pinch = false; a.twist = b.twist = null;
-      world = null;
-      setExplode(c, open ? 1 : 0);
-    }
+    // (3D objects: the stretch itself drives the CONTINUOUS explode — see syncMeshes)
     return;
   }
   // empty space: zoom + rotate the whole scene
@@ -637,10 +629,13 @@ function clapCheck(now){
   if (d < Math.min(W,H)*.14 && va > 18 && closing){
     lastClap = now;
     const mid = { x:(pa.x+pb.x)/2, y:(pa.y+pb.y)/2 };
-    for (const c of CARDS){ const dx = c.x-mid.x, dy = c.y-mid.y, dd = Math.max(40, Math.hypot(dx,dy));
-      c.docked = false; c.tx = c.ty = null; c.vx += dx/dd*34; c.vy += dy/dd*34; }
-    ink.length = 0;                                  // the clap also wipes the ink
+    // CLAP = FULL RESTORE (his 2026-08-28 call): everything back to original size and
+    // place, fans closed, reader closed, ink wiped — a page refresh without the refresh
+    ink.length = 0;
+    closeReader();
+    for (const c of CARDS){ c.docked = false; c.s = c.sT = 1; if (c.explode != null) c.explode = 0; }
     shocks.push({ ...mid, t: now }); postState('clear', 'all'); jSay('clear');
+    resetCards();
   }
 }
 /* TIDY SWEEP: both palms open, swept DOWN together — the whole board snaps into a
@@ -854,16 +849,40 @@ async function loadProps(T){
       model.position.sub(ctr).multiplyScalar(k); model.scale.setScalar(k);
       const wrap = new T.Group(); wrap.add(model);   // wrap.scale stays free for card physics
       wrap.updateWorldMatrix(true, true);
+      // AUTO-SPLIT: a fused single-mesh model still comes apart — slice it into shards
+      let meshCount = 0, solo = null;
+      wrap.traverse(o => { if (o.isMesh){ meshCount++; solo = o; } });
+      if (meshCount === 1 && solo){
+        const shards = splitMesh(T, solo);
+        if (shards){
+          const par = solo.parent;
+          for (const nm of shards){
+            nm.position.copy(solo.position); nm.quaternion.copy(solo.quaternion); nm.scale.copy(solo.scale);
+            par.add(nm);
+          }
+          par.remove(solo);
+          wrap.updateWorldMatrix(true, true);
+        }
+      }
       const parts = [];
       wrap.traverse(m => { if (m.isMesh){
-        const mb = new T.Box3().setFromObject(m);
-        const mc = mb.getCenter(new T.Vector3());                    // wrap frame == world here
-        const inv = new T.Matrix4().copy(m.parent.matrixWorld).invert();
-        const dir = mc.clone().applyMatrix4(inv)
-          .sub(new T.Vector3().applyMatrix4(inv));                   // vector, parent frame
+        let dir;
+        if (m.userData.dirLocal){                                    // shard: true centroid dir,
+          dir = m.userData.dirLocal.clone()                          // mesh-local → parent frame
+            .applyQuaternion(m.quaternion).multiply(m.scale);
+        } else {
+          const mb = new T.Box3().setFromObject(m);
+          const mc = mb.getCenter(new T.Vector3());                  // wrap frame == world here
+          const inv = new T.Matrix4().copy(m.parent.matrixWorld).invert();
+          dir = mc.clone().applyMatrix4(inv)
+            .sub(new T.Vector3().applyMatrix4(inv));                 // vector, parent frame
+        }
         parts.push({ m, base: m.position.clone(), dir });
       } });
       glScene.add(wrap);
+      const POSE = { 'human-skull.glb': { rx: -.25, ry: Math.PI } };   // face the viewer
+      const pose = POSE[name];
+      if (pose){ wrap.rotation.x = pose.rx || 0; wrap.rotation.y = pose.ry || 0; }
       const title = name.replace(/\.glb$/i, '').replace(/[-_]+/g, ' ').toUpperCase().slice(0, 22);
       CARDS.push({ el: null, kind: 'obj', mesh: wrap, title, full: '',
         x: W*.82 - slot*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,
@@ -872,12 +891,38 @@ async function loadProps(T){
     } catch (_){}
   }
 }
-function setExplode(c, on){
-  if (!c.parts || c.parts.length < 2) return false;
-  c.explodeT = on ? 1 : 0;
-  postState(on ? 'explode' : 'assemble', c.title);
-  jSay('boom', on ? 'Opening her up, sir.' : 'Buttoned up.', { cool: 1200 });
-  return true;
+/* split a single indexed mesh into octant shards around its local center, so even a
+   fused scan (the Smithsonian skull) comes apart — every shard shares the original
+   attributes and material, only the index differs (cheap) */
+function splitMesh(T, m){
+  const g = m.geometry;
+  if (!g || !g.index || !g.attributes.position) return null;
+  g.computeBoundingBox();
+  const bc = g.boundingBox.getCenter(new T.Vector3());
+  const pos = g.attributes.position, idx = g.index.array;
+  const groups = Array.from({ length: 8 }, () => []);
+  for (let i = 0; i < idx.length; i += 3){
+    let cx2 = 0, cy2 = 0, cz2 = 0;
+    for (let j = 0; j < 3; j++){ const vi = idx[i + j];
+      cx2 += pos.getX(vi); cy2 += pos.getY(vi); cz2 += pos.getZ(vi); }
+    const oct = (cx2 / 3 > bc.x ? 1 : 0) | (cy2 / 3 > bc.y ? 2 : 0) | (cz2 / 3 > bc.z ? 4 : 0);
+    groups[oct].push(idx[i], idx[i + 1], idx[i + 2]);
+  }
+  const out = [];
+  for (const gr of groups){
+    if (gr.length < 3) continue;
+    const ng = new T.BufferGeometry();
+    for (const k2 in g.attributes) ng.setAttribute(k2, g.attributes[k2]);
+    ng.setIndex(gr);
+    const nm = new T.Mesh(ng, m.material);
+    // per-shard centroid from ITS OWN triangles — the shared position attribute makes
+    // bounding boxes identical across shards, which would send every part the same way
+    let sx = 0, sy = 0, sz = 0;
+    for (const vi of gr){ sx += pos.getX(vi); sy += pos.getY(vi); sz += pos.getZ(vi); }
+    nm.userData.dirLocal = new T.Vector3(sx / gr.length - bc.x, sy / gr.length - bc.y, sz / gr.length - bc.z);
+    out.push(nm);
+  }
+  return out.length > 1 ? out : null;
 }
 function sizeGL(){ if (!glRenderer) return; glRenderer.setSize(W, H, false);
   glCam.aspect = W / H;
@@ -897,10 +942,17 @@ function syncMeshes(){
       c.spin.y *= .986; c.spin.x *= .986;
       if (Math.abs(c.spin.y) < .006) c.spin.y = .006;
     }
-    if (c.parts && c.parts.length > 1 && (c.explodeT || c.explode > .001)){
-      c.explode += (c.explodeT - c.explode) * .09;       // eased burst / reassembly
-      for (const p of c.parts)
-        p.m.position.copy(p.base).addScaledVector(p.dir, c.explode * 1.1);
+    if (c.parts && c.parts.length > 1){
+      // CONTINUOUS explode: driven by the object's SCALE — stretch it bigger and the
+      // parts separate proportionally, shrink it and they fuse back (the skull move)
+      const target = Math.max(0, Math.min(1.0, ((c.s || 1) - 1.2) / .8));
+      c.explode = (c.explode || 0) + (target - c.explode) * .12;
+      if (c.explode > .45 && !c._exOpen){ c._exOpen = true;
+        postState('explode', c.title); jSay('boom', 'Opening her up, sir.', { cool: 2000 }); }
+      else if (c.explode < .3 && c._exOpen){ c._exOpen = false;
+        postState('assemble', c.title); jSay('boom', 'Buttoned up.', { cool: 2000 }); }
+      if (c.explode > .001)
+        for (const p of c.parts) p.m.position.copy(p.base).addScaledVector(p.dir, c.explode * .55);
     }
   }
   glRenderer.render(glScene, glCam);
@@ -1249,10 +1301,13 @@ if (Q.has('probe')) setTimeout(async () => {
     ingestHands([synthHand(tgt, da.ny, 'open')]);
     ok('dock', !!dg && dg.docked === true);
     ingestHands([]);
-    // two-hand zoom in empty corners
+    // two-hand zoom needs truly EMPTY space under both hands — park everything far
+    // (the skull spawns exactly in the right hand's corner and its big halo grabs);
+    // world-zoom scales loose cards regardless of position, so the assert still bites
     const zc = CARDS.find(c => c.kind === 'note' && !c.docked) || CARDS[0];
+    for (const o of CARDS) if (!o.docked){ o.x = -800; o.y = -800; o.tx = o.ty = null; o.vx = o.vy = 0; }
     const zs = zc.sT ?? 1;
-    for (let k=0;k<=14;k++) ingestHands([synthHand(.86+k*.008,.84,'pinch'), synthHand(.14-k*.008,.84,'pinch')]);
+    for (let k=0;k<=24;k++) ingestHands([synthHand(.86+k*.008,.84,'pinch'), synthHand(.14-k*.008,.84,'pinch')]);
     ingestHands([]);
     ok('zoom', Math.abs((zc.sT ?? 1) - zs) > .02);
     const b0 = beams.length;
@@ -1263,6 +1318,20 @@ if (Q.has('probe')) setTimeout(async () => {
     ingestHands([synthHand(.7,.5,'fist'), synthHand(.3,.5,'fist')]);
     ingestHands([synthHand(.53,.5,'fist'), synthHand(.47,.5,'fist')]);
     ok('clap', shocks.length > sh0);
+    // clap = full RESTORE now — wait for the async re-seed, then reopen an orb so the
+    // later note-dependent tests (open/dismiss/stretch/squeeze) still have material
+    await new Promise(r => setTimeout(r, 600));
+    const orb2 = CARDS.find(cc => cc.kind === 'folder');
+    if (orb2){
+      orb2.x = W*.4; orb2.y = H*.35; orb2.vx = orb2.vy = 0; orb2.docked = false; orb2.tx = orb2.ty = null;
+      for (const o of CARDS) if (o !== orb2 && o.kind === 'folder'){ o.x = -600; o.y = -600; o.vx = o.vy = 0; }
+      const oa2 = aim(orb2);
+      warm(oa2.nx, oa2.ny);
+      ingestHands([synthHand(oa2.nx, oa2.ny, 'pinch')]);
+      ingestHands([synthHand(oa2.nx, oa2.ny, 'pinch')]);
+      ingestHands([synthHand(oa2.nx, oa2.ny, 'open')]);
+      ingestHands([]);
+    }
     ingestHands([]);
     // tap a file card → reader opens; any pinch closes
     const rc = CARDS.find(c => c.kind === 'note' && !c.docked) || fc;
@@ -1407,9 +1476,11 @@ if (Q.has('probe')) setTimeout(async () => {
       ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch')]);
       for (let w = 0; w < 3; w++)
         ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch'), synthHand(pa2.nx + .09, pa2.ny, 'open')]);
-      for (let k = 0; k <= 30 && prop.explodeT !== 1; k++)
+      for (let k = 0; k <= 30 && (prop.sT ?? 1) < 2.1; k++)
         ingestHands([synthHand(pa2.nx, pa2.ny, 'pinch'), synthHand(pa2.nx + .09 + k*.02, pa2.ny, 'pinch')]);
-      ok('explode', prop.explodeT === 1 && !drag.card);
+      // the easing runs on rAF (paused in hidden tabs) — assert the DRIVER + the parts
+      // machinery (auto-split), not the animation (the galaxy clap-test law)
+      ok('explode', (prop.sT ?? 1) > 1.9 && prop.parts.length > 1);
       ingestHands([]);
     } else ok('explode', true);
   } catch (e) { R.push('FAIL:exception ' + (e && e.message)); }
