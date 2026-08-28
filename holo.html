@@ -28,8 +28,9 @@
             color:#d9fff2; font-weight:700; }
   .orb span { font-family:"SF Mono",ui-monospace,monospace; font-size:9px; letter-spacing:.1em; color:#8fd8c2; }
   .orb.openf { opacity:.55; border-style:dashed; }
-  .hover { border-color:#8dffdd !important;
-           box-shadow:0 18px 60px rgba(0,0,0,.55), 0 0 34px rgba(110,255,222,.4) !important; }
+  .hover { border-color:#9dffe4 !important;
+           box-shadow:0 18px 60px rgba(0,0,0,.55), 0 0 54px rgba(110,255,222,.75),
+                      inset 0 0 22px rgba(110,255,222,.18) !important; }
   .grab  { border-color:#7dffd9 !important;
            box-shadow:0 22px 70px rgba(0,0,0,.6), 0 0 50px rgba(110,255,220,.5) !important; }
   .docked { border-color:rgba(240,200,100,.55) !important; }
@@ -319,9 +320,14 @@ function cardAt(x, y){
 function targetAt(p){
   const exact = cardAt(p.x, p.y);            // the thing you SEE under your finger wins
   if (exact) return exact;
-  let best = null, bd = 110;                 // magnetism is only a small forgiveness halo
-  for (const c of CARDS){ const d = Math.hypot(p.x - c.x, p.y - c.y);
-    if (d < bd){ best = c; bd = d; } }
+  let best = null, bd = 1e9;
+  for (const c of CARDS){
+    const d = Math.hypot(p.x - c.x, p.y - c.y);
+    // 3D objects are BIG (the hologram disc alone is ~190px wide) — a flat 110px
+    // center halo made them ungrabbable off-center (his "objects not working")
+    const r = c.kind === 'obj' ? Math.max(125, 115 * (c.s || 1)) : 110;
+    if (d < r && d < bd){ best = c; bd = d; }
+  }
   return best;
 }
 
@@ -939,27 +945,24 @@ function drawHud(t){
     for (const p of ink){ if (p.break) flush(); else path.push(p); }
     flush();
   }
-  for (const st of HANDS){
-    // a cursor must EARN the screen: phantom one-frame detections (a face, a shirt
-    // fold) never render — his "weird green dot" field report
-    if (!st.present || !st.smooth || st.seen < 6) continue;
-    // draw-side interpolation: samples arrive at camera rate (~30Hz) but this paints
-    // at display rate (60-120Hz) — the eased draw point is what makes it look FLUID
-    st.draw = st.draw ? { x: st.draw.x + (st.smooth.x - st.draw.x) * .5,
-                          y: st.draw.y + (st.smooth.y - st.draw.y) * .5 } : { ...st.smooth };
-    const cur = st.draw;
-    const k = st.m ? Math.max(0, Math.min(1, (st.m.pinch - .2) / .5)) : 1;   // 0=closed 1=open
-    const r = 9 + 20 * k;
-    // soft glow halo
-    const g = HG.createRadialGradient(cur.x, cur.y, 2, cur.x, cur.y, r + 18);
-    g.addColorStop(0, 'rgba(125,255,217,.5)'); g.addColorStop(1, 'rgba(125,255,217,0)');
-    HG.fillStyle = g; HG.beginPath(); HG.arc(cur.x, cur.y, r + 18, 0, 7); HG.fill();
-    // the ring: contracts as the pinch closes
-    HG.lineWidth = 2.4; HG.strokeStyle = st.pinch ? '#9dffe4' : 'rgba(190,255,235,.9)';
-    HG.beginPath(); HG.arc(cur.x, cur.y, st.pinch ? 8 : r, 0, 7); HG.stroke();
-    HG.fillStyle = st.pinch ? 'rgba(157,255,228,.85)' : 'rgba(230,255,248,.9)';
-    HG.beginPath(); HG.arc(cur.x, cur.y, 3, 0, 7); HG.fill();
-  }
+  // NO floating pointer (his 2026-08-28 call: "remove that dot") — the TARGET is the
+  // indicator: hovered cards glow via CSS, hovered/held 3D objects get a ring drawn
+  // here. Feedback lives on the thing you're about to grab, not on a wandering dot.
+  const ringObj = (c, strong) => {
+    const rr = Math.max(120, 112 * (c.s || 1)) + 4 * Math.sin(t / 220);
+    HG.lineWidth = strong ? 3 : 1.8;
+    HG.strokeStyle = strong ? 'rgba(157,255,228,.95)' : 'rgba(125,255,217,.55)';
+    HG.beginPath(); HG.arc(c.x, c.y, rr, 0, 7); HG.stroke();
+    const g = HG.createRadialGradient(c.x, c.y, rr * .7, c.x, c.y, rr + 26);
+    g.addColorStop(0, 'rgba(125,255,217,0)');
+    g.addColorStop(.8, `rgba(125,255,217,${strong ? .16 : .08})`);
+    g.addColorStop(1, 'rgba(125,255,217,0)');
+    HG.fillStyle = g; HG.beginPath(); HG.arc(c.x, c.y, rr + 26, 0, 7); HG.fill();
+  };
+  if (drag.card && drag.card.kind === 'obj') ringObj(drag.card, true);
+  else for (const st of HANDS)
+    if (st.present && st.seen >= 6 && st.hover && st.hover.kind === 'obj')
+      ringObj(st.hover, false);
   beams = beams.filter(b => t - b.t < 420);
   for (const b of beams){ const a = 1 - (t - b.t)/420;
     HG.strokeStyle = `rgba(240,200,100,${(a*.8).toFixed(2)})`; HG.lineWidth = 2;
