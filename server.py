@@ -20,6 +20,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("HOLO_PORT", "4890"))
 
+# the page, cached at boot: long-lived processes on macOS can silently lose file
+# access (TCC) hours in — serving the boot-time copy beats a 500 "missing" page
+try:
+    PAGE_CACHE = [open(os.path.join(ROOT, "holo.html"), "rb").read()]
+except OSError:
+    PAGE_CACHE = [None]
+
 def notes_dir():
     try:
         cfg = json.load(open(os.path.join(ROOT, "holo.json")))
@@ -99,10 +106,13 @@ class H(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         if p in ("/", "/holo.html"):
             try:
-                return self._send(200, open(os.path.join(ROOT, "holo.html"), "rb").read(),
-                                  "text/html; charset=utf-8")
+                body = open(os.path.join(ROOT, "holo.html"), "rb").read()
+                PAGE_CACHE[0] = body
             except OSError:
+                body = PAGE_CACHE[0]          # disk access lost (TCC) — serve the boot copy
+            if body is None:
                 return self._send(500, {"error": "holo.html missing"})
+            return self._send(200, body, "text/html; charset=utf-8")
         if p == "/api/props":
             # PROPS: any .glb dropped into props/ becomes a grabbable 3D object
             try:
