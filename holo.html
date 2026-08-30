@@ -549,8 +549,10 @@ function releasePinch(i){
     const v = peakVelocity(tr);
     if (v.sp > 4){ c.vx = v.vx * 1.35; c.vy = v.vy * 1.35; }
     const palmNow = st.m ? px(st.m.palm) : st.startPalm;
-    const quick = performance.now() - st.pinchT < 300 &&
-                  st.startPalm && dist(st.startPalm, palmNow) < 34;
+    // field-tuned gate (ported from the galaxy 2026-08-30 — it never made it back here):
+    // real pinches hold ~400ms and drift ~50px; 300/34 demanded lab-perfect taps
+    const quick = performance.now() - st.pinchT < 450 &&
+                  st.startPalm && dist(st.startPalm, palmNow) < 60;
     if (c.x > DOCK_X() - 80){ c.docked = true; postState('dock', c.title); jSay('dock'); }
     else if (quick && c.kind === 'folder'){ c.vx = c.vy = 0; c.open ? closeOrb(c) : openOrb(c); }
     else if (quick && c.kind === 'note'){ c.vx = c.vy = 0; openReader(c); }
