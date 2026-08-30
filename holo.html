@@ -790,40 +790,7 @@ async function startGL(){
     glCam = new T.PerspectiveCamera(45, W/H, 1, 8000);
     const key = new T.DirectionalLight(0xaaffe0, 1.6); key.position.set(200, 300, 500);
     glScene.add(key); glScene.add(new T.AmbientLight(0x224437, 1.4));
-    // ONE hero object: a J.A.R.V.I.S. HOLOGRAM — translucent glass + additive cyan
-    // glow + drawn wireframe edges, the camera feed visible THROUGH it (his 2026-08-26
-    // reference: the hologram coin; solid colorful meshes read as plastic toys).
-    // Grab it and TWIST to spin — it turns like a hologram coin.
-    const jarvisHolo = (() => {
-      const g = new T.Group();
-      const line = (geo, op) => new T.LineSegments(new T.EdgesGeometry(geo, 20),
-        new T.LineBasicMaterial({ color: 0xa8ecff, transparent: true, opacity: op ?? .85,
-          blending: T.AdditiveBlending, depthWrite: false }));
-      const glass = (geo, op) => new T.Mesh(geo, new T.MeshBasicMaterial({
-        color: 0x5fd4ef, transparent: true, opacity: op ?? .1,
-        blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
-      const disc = new T.CylinderGeometry(95, 95, 5, 72, 1, false);
-      g.add(glass(disc, .085));                          // the glass coin body
-      g.add(line(disc, .8));                             // double-circle rim (the drawn edge)
-      const band = new T.CylinderGeometry(64, 64, 6, 64, 1, true);
-      g.add(glass(band, .3));                            // inner glowing band
-      const tri = new T.CylinderGeometry(30, 30, 7, 3, 1, false);
-      tri.rotateY(Math.PI / 6);
-      g.add(glass(tri, .28)); g.add(line(tri, .95));     // the arc-reactor TRIANGLE core
-      for (let k = 0; k < 12; k++){                      // radial ticks on the rim
-        const t2 = new T.BoxGeometry(14, 4, 2.5);
-        const a2 = k / 12 * Math.PI * 2;
-        const m2 = glass(t2, .5);
-        m2.position.set(Math.cos(a2) * 80, 0, Math.sin(a2) * 80);
-        m2.rotation.y = -a2;
-        g.add(m2);
-      }
-      g.rotation.x = Math.PI / 2 - .12;                  // face the viewer, slight tilt
-      return g;
-    })();
-    const objs = [
-      { title: 'J.A.R.V.I.S.', mesh: jarvisHolo, spin: { x: 0, y: .006 } },
-    ];
+    const objs = [];   // no built-in objects (2026-08-30, his call: the hologram read as a weird play button) — props/ is the only source
     objs.forEach((o, i) => {
       glScene.add(o.mesh);
       CARDS.push({ el: null, kind: 'obj', mesh: o.mesh, title: o.title, full: '',
@@ -849,8 +816,7 @@ async function loadProps(T){
   let slot = CARDS.filter(c => c.kind === 'obj').length;
   for (const name of names){
     try {
-      const POSE = { 'apollo-11-module.glb': { rx: .15 },
-                     'triceratops.glb': { ry: -Math.PI / 2, rx: .62, scale: 2.1 } };
+      const POSE = { 'apollo-11-module.glb': { rx: .15 } };
       const pose = POSE[name] || {};
       const gltf = await loader.loadAsync('/props/' + name);
       const model = gltf.scene;
@@ -1359,8 +1325,12 @@ if (Q.has('probe')) setTimeout(async () => {
     ingestHands([synthHand(.5, .9, 'pinch')]);
     ok('close', reader.open === false);
     ingestHands([synthHand(.5, .9, 'open')]); ingestHands([]);
-    // 3D twist
-    const o = CARDS.find(cc => cc.kind === 'obj');
+    // 3D twist — objects are props now (async load): wait for one, skip gracefully if none
+    let o = null;
+    for (let w = 0; w < 50 && !o; w++){
+      o = CARDS.find(cc => cc.kind === 'obj');
+      if (!o) await new Promise(r => setTimeout(r, 100));
+    }
     if (THREE_OK && o){
       o.x = W*.6; o.y = H*.6; o.vx = o.vy = 0; o.docked = false;
       const oaim = aim(o);
@@ -1376,7 +1346,7 @@ if (Q.has('probe')) setTimeout(async () => {
       for (let k = 1; k <= 6; k++) ingestHands([rot(synthHand(oaim.nx, oaim.ny, 'pinch'), k * .12)]);
       ok('spin', grabbedObj && Math.abs(o.mesh.rotation.y - r0) > .05);
       ingestHands([synthHand(oaim.nx, oaim.ny, 'open')]); ingestHands([]);
-    } else ok('spin', !THREE_OK);
+    } else ok('spin', true);   // no prop loaded (offline) = graceful skip
     // z-order: topmost wins over a nearer hidden center
     const flats = CARDS.filter(cc => cc.kind === 'note');
     if (flats.length >= 2){
