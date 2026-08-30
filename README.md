@@ -28,8 +28,8 @@ That's it. Python 3 is the only requirement (standard library only, nothing to i
 | Open palm, snap to FIST | force-pull the nearest far card to you |
 | Open palm THRUST at camera | repulsor blast, everything shoves away |
 | POINT (one finger) | draw glowing ink in the air |
-| Both palms sweep down, or PEACE ✌ | everything tidies into a grid |
-| CLAP | shockwave scatters the board |
+| Both palms sweep down | everything tidies into a grid |
+| PEACE ✌ held (or CLAP) | everything restores to its original place — a refresh without the refresh |
 | Drag to the right edge | dock a card on the shelf |
 
 An on-screen legend shows all of this while you play.
@@ -54,7 +54,7 @@ Put any `.glb` file into the `props/` folder and it appears on the deck as a rea
 
 - **APOLLO 11 COMMAND MODULE** — the actual scan of Columbia, scorch marks and all
 
-**Stretch a model bigger with two hands and it COMES APART — the closer you zoom, the more it separates. Shrink it and it fuses back together.** Multi-part models split at their natural seams; single-mesh scans (like the skull) are auto-split into shards at load, so everything opens up. CLAP restores the whole board to its original state.
+**Stretch a model bigger with two hands and it COMES APART — the closer you zoom, the more it separates. Shrink it and it fuses back together.** Multi-part models split at their natural seams; single-mesh scans are auto-split into shards at load, so everything opens up.
 
 ## Extras
 
