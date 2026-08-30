@@ -597,7 +597,11 @@ function twoHand(now){
     // (3D objects: the stretch itself drives the CONTINUOUS explode — see syncMeshes)
     return;
   }
-  // empty space: zoom + rotate the whole scene
+  // empty space: zoom + rotate the whole scene. REAL separation required — a surviving
+  // ghost duplicate sits right on its twin, and world-rotate throws every card across
+  // the screen (2026-08-30 field regression). Stretch/squeeze above is exempt: those
+  // hands are genuinely close.
+  if (Math.hypot(pa.x - pb.x, pa.y - pb.y) < 140){ world = null; return; }
   if (!world || world.mode !== 'world'){ world = { mode:'world', d0:d, a0:ang }; return; }
   const s = Math.min(1.06, Math.max(.94, d / world.d0));
   const rot = ang - world.a0;
@@ -1096,11 +1100,17 @@ async function startCamera(){
       // ghost distance, and merging them killed the clap (2026-08-28). Ghosts are a
       // NEW detection born beside one live hand, not a long-tracked pair.
       const twoLive = HANDS[0].present && HANDS[0].seen > 4 && HANDS[1].present && HANDS[1].seen > 4;
-      if (pair.length === 2 && !twoLive){
+      if (pair.length === 2){
         const P2 = p2 => ({ x: (p2.lm[0].x + p2.lm[9].x)/2, y: (p2.lm[0].y + p2.lm[9].y)/2 });
         const S2 = p2 => Math.hypot(p2.lm[0].x - p2.lm[9].x, p2.lm[0].y - p2.lm[9].y);
         const dd = Math.hypot(P2(pair[0]).x - P2(pair[1]).x, P2(pair[0]).y - P2(pair[1]).y);
-        if (dd < Math.max(S2(pair[0]), S2(pair[1])) * .7){   // true overlap only
+        // GHOST vs CLAP (2026-08-30 regression fix): when the two detections are NOT
+        // two long-established hands, a neighbour within 1.35 spans is a GHOST DUPLICATE
+        // — merge it. Dropping this to .7 (to save the clap) let ghosts survive as a
+        // second hand, and a ghost of a PINCHING hand fires two-hand world zoom/rotate,
+        // which throws every card across the screen. Established pairs (a clap) still
+        // never merge until they truly overlap.
+        if (dd < Math.max(S2(pair[0]), S2(pair[1])) * (twoLive ? .5 : 1.35)){
           pair = [pair[0].s >= pair[1].s ? pair[0] : pair[1]];
           RAW.ghost = true;
         }
