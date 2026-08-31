@@ -136,6 +136,7 @@
   <span class="chip" id="hands">HANDS ON</span>
   <span class="chip off" id="camvis">CAM 55%</span>
   <span class="chip off" id="reset">RESET</span>
+  <span class="chip off" id="fx">EFFECTS</span>
   <span class="chip off" id="debug">DEBUG</span>
   <span class="chip off" id="jarvis">JARVIS</span>
   <span class="chip" id="retry">RETRY CAMERA</span>
@@ -144,8 +145,8 @@
 <div id="reader"><div class="pane"><h2></h2><pre></pre><div class="hint">PINCH ANYWHERE · TAP · OR CLICK TO CLOSE</div></div></div>
 <div id="caption"></div>
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
-<b>TWO PINCHES</b> zoom / rotate &nbsp;·&nbsp; <b>PALM→FIST</b> pull &nbsp;·&nbsp; <b>PALM THRUST</b> repulsor &nbsp;·&nbsp; <b>POINT</b> draw ink<br>
-<b>PALMS SWEEP DOWN</b> tidy &nbsp;·&nbsp; <b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode<br>
+<b>2-HAND STRETCH</b> on a held card: big = read · crush = TL;DR · 3D comes APART<br>
+<b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode &nbsp;·&nbsp; <b>F</b> = EFFECTS (pull · push · ink · clap · tidy · world zoom)<br>
 <b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
@@ -272,6 +273,18 @@ function physics(){
   const hov = new Set(HANDS.filter(h => h.present && h.hover).map(h => h.hover));
   const gone = [];
   for (const c of CARDS){
+    // NaN QUARANTINE: one bad frame used to strand a card at 0,0 permanently (an
+    // invalid transform is silently dropped by the browser). Repair, never strand.
+    if (!isFinite(c.s) || c.s <= 0) c.s = c.sT = 1;
+    if (!isFinite(c.sT)) c.sT = 1;
+    if (!isFinite(c.vx) || !isFinite(c.vy)) c.vx = c.vy = 0;
+    if (!isFinite(c.tx) || !isFinite(c.ty)) c.tx = c.ty = null;
+    if (!isFinite(c.x) || !isFinite(c.y)){
+      const home = c.parent || null;
+      c.x = home && isFinite(home.x) ? home.x : W * .5;
+      c.y = home && isFinite(home.y) ? home.y : H * .5;
+      c.vx = c.vy = 0; c.tx = c.ty = null;
+    }
     c.s += ((c.sT ?? 1) - c.s) * .16;                       // birth/scale ease
     if (c.tx != null){ c.x += (c.tx - c.x) * .14; c.y += (c.ty - c.y) * .14;
       if (Math.abs(c.tx - c.x) + Math.abs(c.ty - c.y) < 3){ c.tx = c.ty = null; } }
@@ -350,7 +363,7 @@ readerEl.addEventListener('pointerdown', closeReader);
 const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 /* field-tuned on the galaxy build 2026-08-26: a pinch means FINGERS TOUCHING (.22)
    and must hold PINCH_EARN consecutive frames — near-pinches register nothing */
-const PINCH_IN = .22, PINCH_OUT = .34, PINCH_EARN = 2;
+const PINCH_IN = .30, PINCH_OUT = .42, PINCH_EARN = 2;   // relaxed 2026-08-30: .22 needed fingers literally touching; the original 'too sensitive' complaint was GHOST hands (now deduped), not this number
 function handMetrics(lm){
   const span = Math.max(1e-4, dist(lm[0], lm[9]));
   const curl = (i) => dist(lm[i], lm[0]) / span;
@@ -419,6 +432,13 @@ const drag = { card:null, hand:-1, dx:0, dy:0 };
 let world = null;
 let lastClap = -9e9, shocks = [], beams = [];
 let camOn = false, tracking = true, DELEGATE = 'none';
+/* SIMPLE MODE (default, 2026-08-31): only the gestures you START on purpose —
+   hover, pinch-grab, drag, tap-to-open, flick, dock, two-hand stretch on a HELD
+   card, and the peace reset. The ambient ones (repulsor push, force-pull, ink,
+   clap, tidy sweep, empty-space world zoom) fire off the raw pose stream and on a
+   real camera they misfire constantly — stealing pinches and flinging cards into
+   a corner. They live behind the EFFECTS chip now. */
+let ADV = Q.has('adv') || Q.has('probe');
 /* green-dot forensics: a PERSISTENT false detection (a face, a lamp) survives the
    6-frame render gate — so phantoms are killed at three layers instead:
    confidence floor .6 at the tracker, the span gate here, the stale watchdog below */
@@ -460,12 +480,12 @@ function ingestHands(rawHands){
     if (st.seen >= 3 && !st.pinch && !drag.card) st.hover = targetAt(cur);
     if (m.open){ st.open = true; st.openT = now; }
     else if (st.open && m.fist && now - st.openT < 320 && !st.pinch){ st.open = false;
-      if (!reader.open) forcePull(cur); }
+      if (ADV && !reader.open) forcePull(cur); }
     else if (!m.open && now - st.openT > 500) st.open = false;
     st.fist = m.fist;
     // INK MODE: a POINTING hand (index out, others curled) draws light in the air.
     // 4-frame earn so a pose flicker never inks; strokes fade on their own; clap clears.
-    if (!reader.open && !st.pinch && m.point && st.seen >= 3){
+    if (ADV && !reader.open && !st.pinch && m.point && st.seen >= 3){
       st.point++;
       if (st.point === 4){ ink.push({ break: true }); jSay('ink', null, { cool: 18000 }); }
       if (st.point >= 4){ ink.push({ x: cur.x, y: cur.y, t: now });
@@ -473,7 +493,7 @@ function ingestHands(rawHands){
     } else { if (st.point >= 4) ink.push({ break: true }); st.point = 0; }
     // REPULSOR: an open palm THRUST at the camera (span balloons fast) blasts
     // everything near the palm away — a push, where clap is the two-hand scatter
-    if (!reader.open && m.open && !st.pinch && st.spans.length >= 4 && now - lastPush[i] > 900){
+    if (ADV && !reader.open && m.open && !st.pinch && st.spans.length >= 4 && now - lastPush[i] > 900){
       const old = st.spans[0];
       if (now - old.t < 260 && m.span / old.s > 1.32){
         lastPush[i] = now;
@@ -506,8 +526,7 @@ function ingestHands(rawHands){
     } else st.peaceN = 0;
   }
   twoHand(now);
-  clapCheck(now);
-  tidyCheck(now);
+  if (ADV){ clapCheck(now); tidyCheck(now); }
 }
 function beginPinch(i, cur){
   if (reader.open){ closeReader(); return; }
@@ -572,11 +591,14 @@ function twoHand(now){
     // BOTH hands on one thing = stretch IT. Stretch a note past 1.7× and it OPENS.
     const c = drag.card, other = drag.hand === 0 ? pb : pa;
     const near = Math.hypot(other.x - c.x, other.y - c.y) < 240 * Math.max(1, c.s);
-    if (!world || world.mode !== 'card'){ if (near) world = { mode:'card', d0:d }; return; }
-    const k = Math.min(1.06, Math.max(.94, d / world.d0));
+    // d0 floored: a ghost duplicate lands ON its twin (d≈0) and 0/0 = NaN, which
+    // poisons the card's scale — a NaN transform is ignored by the browser and the
+    // card falls to the top-left corner, stuck forever (2026-08-31 field report)
+    if (!world || world.mode !== 'card'){ if (near) world = { mode:'card', d0: Math.max(40, d) }; return; }
+    const k = Math.min(1.06, Math.max(.94, d / Math.max(40, world.d0)));
     c.sT = Math.min(2.3, Math.max(.5, (c.sT ?? 1) * k));
     c.s = c.sT;
-    world.d0 = d;
+    world.d0 = Math.max(40, d);
     if (c.kind === 'note' && c.sT > 1.7){
       c.sT = c.s = 1; c.vx = c.vy = 0;
       if (c.el) c.el.classList.remove('grab');
@@ -601,9 +623,9 @@ function twoHand(now){
   // ghost duplicate sits right on its twin, and world-rotate throws every card across
   // the screen (2026-08-30 field regression). Stretch/squeeze above is exempt: those
   // hands are genuinely close.
-  if (Math.hypot(pa.x - pb.x, pa.y - pb.y) < 140){ world = null; return; }
+  if (!ADV || Math.hypot(pa.x - pb.x, pa.y - pb.y) < 140){ world = null; return; }
   if (!world || world.mode !== 'world'){ world = { mode:'world', d0:d, a0:ang }; return; }
-  const s = Math.min(1.06, Math.max(.94, d / world.d0));
+  const s = Math.min(1.06, Math.max(.94, d / Math.max(40, world.d0)));
   const rot = ang - world.a0;
   for (const c of CARDS){ if (c.docked) continue;
     let dx = c.x - mid.x, dy = c.y - mid.y;
@@ -820,7 +842,8 @@ async function loadProps(T){
   let slot = CARDS.filter(c => c.kind === 'obj').length;
   for (const name of names){
     try {
-      const POSE = { 'apollo-11-module.glb': { rx: .15 } };
+      const POSE = { 'apollo-11-module.glb': { rx: .15 },
+                     'triceratops.glb': { ry: -Math.PI / 2, rx: .62, scale: 2.1 } };
       const pose = POSE[name] || {};
       const gltf = await loader.loadAsync('/props/' + name);
       const model = gltf.scene;
@@ -1221,6 +1244,11 @@ document.getElementById('camvis').onclick = function(){ camLevel = (camLevel + 1
   cam.style.opacity = CAM_LEVELS[camLevel];
   this.textContent = 'CAM ' + Math.round(CAM_LEVELS[camLevel] * 100) + '%'; };
 document.getElementById('reset').onclick = resetCards;
+document.getElementById('fx').onclick = function(){ ADV = !ADV;
+  this.classList.toggle('off', !ADV);
+  this.textContent = ADV ? 'EFFECTS ON' : 'EFFECTS';
+  jSay('fx', ADV ? 'Full gesture set, sir.' : 'Simple mode, sir.', { cool: 0, force: true });
+};
 document.getElementById('debug').onclick = function(){ debugOn = !debugOn;
   this.classList.toggle('off', !debugOn); };
 document.getElementById('retry').onclick = () => startCamera();
@@ -1228,6 +1256,7 @@ document.getElementById('jarvis').onclick = () => setJarvis(!JARVIS_ON);
 addEventListener('keydown', e => { if (e.key === 'h') document.getElementById('hands').click();
   if (e.key === 'v') document.getElementById('camvis').click();
   if (e.key === 'd') document.getElementById('debug').click();
+  if (e.key === 'f') document.getElementById('fx').click();
   if (e.key === 'j') setJarvis(!JARVIS_ON);
   if (e.key === 'r') resetCards(); });
 if (Q.has('jarvis')) setJarvis(true);
@@ -1491,6 +1520,24 @@ if (Q.has('probe')) setTimeout(async () => {
       ok('explode', (prop.sT ?? 1) > 1.9 && prop.parts.length > 1);
       ingestHands([]);
     } else ok('explode', true);
+    // GHOST-ON-HELD-CARD (his 2026-08-31 bug): a duplicate detection lands ON the
+    // held card's hand → hand distance ~0 → 0/0 = NaN scale → the card's transform
+    // is dropped and it strands at 0,0 top-left. Must stay finite and on-screen.
+    ingestHands([]);
+    const gc = CARDS.find(cc => cc.kind === 'note' && !cc.docked);
+    if (gc){
+      gc.x = W*.5; gc.y = H*.5; gc.tx = gc.ty = null; gc.vx = gc.vy = 0; gc.s = gc.sT = 1; gc.docked = false;
+      const ga = aim(gc);
+      warm(ga.nx, ga.ny);
+      ingestHands([synthHand(ga.nx, ga.ny, 'pinch')]);
+      ingestHands([synthHand(ga.nx, ga.ny, 'pinch')]);
+      // second "hand" exactly on top of the first — the ghost
+      for (let k = 0; k < 8; k++)
+        ingestHands([synthHand(ga.nx, ga.ny, 'pinch'), synthHand(ga.nx, ga.ny, 'pinch')]);
+      physics();
+      ok('ghostnan', isFinite(gc.x) && isFinite(gc.y) && isFinite(gc.s) && gc.s > 0);
+      ingestHands([]);
+    } else ok('ghostnan', true);
   } catch (e) { R.push('FAIL:exception ' + (e && e.message)); }
   const pass = R.filter(r => r.startsWith('PASS')).length;
   document.title = `PROBE ${pass}/${R.length} · ` + R.join(' ');
