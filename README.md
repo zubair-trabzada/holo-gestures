@@ -25,11 +25,8 @@ That's it. Python 3 is the only requirement (standard library only, nothing to i
 | Flick a note off-screen | it evaporates |
 | Two-hand STRETCH a note | big = opens the reader, CRUSH it small = spoken TL;DR |
 | Two pinches in empty space | zoom + rotate the whole scene |
-| Open palm, snap to FIST | force-pull the nearest far card to you |
-| Open palm THRUST at camera | repulsor blast, everything shoves away |
-| POINT (one finger) | draw glowing ink in the air |
-| Both palms sweep down | everything tidies into a grid |
-| PEACE ✌ held (or CLAP) | everything restores to its original place — a refresh without the refresh |
+| PEACE ✌ held | everything restores to its original place — a refresh without the refresh |
+| Press **F** (EFFECTS) | adds the showy always-listening ones: palm-hold repulsor · palm→fist pull · point to draw ink · clap · two-palm tidy |
 | Drag to the right edge | dock a card on the shelf |
 
 An on-screen legend shows all of this while you play.
@@ -50,16 +47,17 @@ Subfolders become orbs. It ships pointed at `sample-notes/` so it works the seco
 
 ## 3D props — drop in ANY model
 
-Put any `.glb` file into the `props/` folder and it appears on the deck as a real 3D object you can grab, throw, spin (twist while pinching), and dock. It ships with a Smithsonian showpiece:
+Put any `.glb` file into the `props/` folder and it appears on the deck as a real 3D object you can grab, throw, spin (twist while pinching), and dock. It ships with two Smithsonian showpieces:
 
 - **APOLLO 11 COMMAND MODULE** — the actual scan of Columbia, scorch marks and all
+- **TRICERATOPS** — a real fossil skeleton scan
 
 **Stretch a model bigger with two hands and it COMES APART — the closer you zoom, the more it separates. Shrink it and it fuses back together.** Multi-part models split at their natural seams; single-mesh scans are auto-split into shards at load, so everything opens up.
 
 ## Extras
 
 - `?sim=1` — a scripted demo loop plays with synthetic hands, no camera needed
-- `?probe=1` — the built-in test battery runs the real engine on synthetic frames (this build: 23/23)
+- `?probe=1` — the built-in test battery runs the real engine on synthetic frames (this build: 26/26)
 - Mouse works as a fallback everywhere
 
 ## Want the full JARVIS?
@@ -74,4 +72,8 @@ Watch it get built: https://www.youtube.com/@mygptworkshop
 
 Original code: MIT (see LICENSE). The `vendor/` folder contains Google MediaPipe Tasks Vision (Apache-2.0) and three.js incl. GLTFLoader (MIT), self-hosted so ad-blockers and offline machines can't break the tracking. Note: both `vendor/wasm/vision_wasm_*.js` files carry a one-line shim at the top (marked HOLO SHIM) that fixes a crash in the release build of MediaPipe's wasm glue. If you re-download MediaPipe yourself, you need to re-apply it.
 
-The model in `props/` is a Smithsonian Institution 3D digitization (the Apollo 11 Command Module), released CC0 (public domain) at 3d.si.edu. Swap in your own models freely — any glTF-Binary (.glb) works (Draco-compressed files need decompressing first, e.g. `npx @gltf-transform/cli copy in.glb out.glb`).
+The models in `props/` are Smithsonian Institution 3D digitizations (Apollo 11 Command Module, Triceratops horridus), released CC0 (public domain) at 3d.si.edu. Swap in your own models freely — any glTF-Binary (.glb) works (Draco-compressed files need decompressing first, e.g. `npx @gltf-transform/cli copy in.glb out.glb`).
+
+## Start here
+
+Open **HOLO-Start-Here.pdf** in this folder — two-minute install, the full gesture list, and four copy-paste Claude Code prompts for adding your own 3D models, retuning the feel, inventing a gesture, and rebranding it as your own.
