@@ -145,8 +145,8 @@
 <div id="reader"><div class="pane"><h2></h2><pre></pre><div class="hint">PINCH ANYWHERE · TAP · OR CLICK TO CLOSE</div></div></div>
 <div id="caption"></div>
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
-<b>2-HAND STRETCH</b> on a held card: big = read · crush = TL;DR · 3D comes APART<br>
-<b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode &nbsp;·&nbsp; <b>F</b> = EFFECTS (pull · push · ink · clap · tidy · world zoom)<br>
+<b>TWO PINCHES</b> (apart/together) zoom · twist = rotate &nbsp;·&nbsp; <b>2-HAND STRETCH</b> on a held card: big = read · crush = TL;DR · 3D comes APART<br>
+<b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode &nbsp;·&nbsp; <b>F</b> = EFFECTS (pull · push · ink · clap · tidy)<br>
 <b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
@@ -164,6 +164,8 @@
    battery — amplified reach applies ONLY to real-camera input.
    ========================================================================== */
 const Q = new URLSearchParams(location.search);
+window.__lastErr = null;
+addEventListener('error', e => { if (!window.__lastErr) window.__lastErr = (e.message || '?') + ' @' + (e.lineno || '?'); });
 const SIM = Q.has('sim');
 const FAST = Q.has('fast');
 
@@ -623,7 +625,7 @@ function twoHand(now){
   // ghost duplicate sits right on its twin, and world-rotate throws every card across
   // the screen (2026-08-30 field regression). Stretch/squeeze above is exempt: those
   // hands are genuinely close.
-  if (!ADV || Math.hypot(pa.x - pb.x, pa.y - pb.y) < 140){ world = null; return; }
+  if (Math.hypot(pa.x - pb.x, pa.y - pb.y) < 140){ world = null; return; }
   if (!world || world.mode !== 'world'){ world = { mode:'world', d0:d, a0:ang }; return; }
   const s = Math.min(1.06, Math.max(.94, d / Math.max(40, world.d0)));
   const rot = ang - world.a0;
@@ -1006,12 +1008,12 @@ function drawHud(t){
     const rr = Math.max(120, 112 * (c.s || 1)) + 4 * Math.sin(t / 220);
     HG.lineWidth = strong ? 3 : 1.8;
     HG.strokeStyle = strong ? 'rgba(157,255,228,.95)' : 'rgba(125,255,217,.55)';
-    HG.beginPath(); HG.arc(c.x, c.y, rr, 0, 7); HG.stroke();
+    HG.beginPath(); HG.arc(c.x, c.y, Math.max(1, rr), 0, 7); HG.stroke();
     const g = HG.createRadialGradient(c.x, c.y, rr * .7, c.x, c.y, rr + 26);
     g.addColorStop(0, 'rgba(125,255,217,0)');
     g.addColorStop(.8, `rgba(125,255,217,${strong ? .16 : .08})`);
     g.addColorStop(1, 'rgba(125,255,217,0)');
-    HG.fillStyle = g; HG.beginPath(); HG.arc(c.x, c.y, rr + 26, 0, 7); HG.fill();
+    HG.fillStyle = g; HG.beginPath(); HG.arc(c.x, c.y, Math.max(1, rr + 26), 0, 7); HG.fill();
   };
   if (drag.card && drag.card.kind === 'obj') ringObj(drag.card, true);
   else for (const st of HANDS)
@@ -1021,15 +1023,24 @@ function drawHud(t){
   for (const b of beams){ const a = 1 - (t - b.t)/420;
     HG.strokeStyle = `rgba(240,200,100,${(a*.8).toFixed(2)})`; HG.lineWidth = 2;
     HG.beginPath(); HG.moveTo(b.from.x, b.from.y); HG.lineTo(b.card.x, b.card.y); HG.stroke(); }
-  shocks = shocks.filter(s => t - s.t < 700);
+  shocks = shocks.filter(s => t - s.t < 700 && t >= s.t);
   for (const s of shocks){ const k = (t - s.t)/700;
     HG.strokeStyle = `rgba(125,255,217,${(1-k).toFixed(2)})`; HG.lineWidth = 3*(1-k)+.5;
-    HG.beginPath(); HG.arc(s.x, s.y, k*Math.min(W,H)*.5, 0, 7); HG.stroke(); }
+    HG.beginPath(); HG.arc(s.x, s.y, Math.max(0, k) * Math.min(W, H) * .5, 0, 7); HG.stroke(); }
 }
 
 /* ---------- main loop ---------- */
-function loop(t){ if (!SIM && !Q.has('probe')) reapStale();
-  drawStars(t); physics(); drawHud(t); requestAnimationFrame(loop); }
+function loop(t){
+  requestAnimationFrame(loop);        // FIRST: a throwing frame must never end the loop.
+  try {                               // (it used to be last — one bad frame froze the deck
+    if (!SIM && !Q.has('probe')) reapStale();   //  forever: orbs stranded top-left with no
+    drawStars(t); physics(); drawHud(t);        //  transform, nothing grabbable, no zoom)
+  } catch (e){
+    LOOP_ERRS++;
+    if (!window.__loopErr){ window.__loopErr = String(e && e.message || e); console.warn('[holo] frame error:', e); }
+  }
+}
+let LOOP_ERRS = 0;
 requestAnimationFrame(loop);
 
 /* ---------- camera + MediaPipe ---------- */
@@ -1478,11 +1489,27 @@ if (Q.has('probe')) setTimeout(async () => {
     await new Promise(r => setTimeout(r, 2600));           // clear the restore cooldown (clap test)
     const dockOne = CARDS.find(cc => cc.kind === 'note');
     if (dockOne) dockOne.docked = true;
+    const placedBefore = [...document.querySelectorAll('.orb')].filter(e => /translate3d/.test(e.style.transform || '')).length;
+    const objCount0 = CARDS.filter(cc => cc.kind === 'obj').length;
     const r0 = lastRestore;
     for (let k = 0; k < 10; k++) ingestHands([synthHand(.5, .45, 'peace')]);
     await new Promise(r => setTimeout(r, 700));            // async re-seed
-    ok('peace', lastRestore > r0 && CARDS.every(cc => !cc.docked) &&
-      !CARDS.some(cc => cc.kind === 'note'));
+    // poll for placement rather than assuming a frame budget — a bigger canvas fits
+    // fewer frames into the same virtual time, which raced the old fixed wait
+    // wait for the async re-seed, then drive ONE physics tick directly: headless
+    // stops delivering rAF frames late in a long battery, so relying on the loop
+    // here tests the harness, not the deck
+    let orbEls = [], allPlaced = false;
+    for (let w = 0; w < 40 && !allPlaced; w++){
+      physics();
+      orbEls = [...document.querySelectorAll('.orb')];
+      allPlaced = orbEls.length > 0 && orbEls.every(e => /translate3d/.test(e.style.transform || ''));
+      if (!allPlaced) await new Promise(r => setTimeout(r, 80));
+    }
+    ok('peace' + (allPlaced ? '' : '-p' + orbEls.filter(e => /translate3d/.test(e.style.transform || '')).length + 'of' + orbEls.length + '-conn' + CARDS.filter(c=>c.kind==='folder'&&c.el&&c.el.isConnected).length + '-xf' + CARDS.filter(c=>c.kind==='folder'&&c.el&&/translate3d/.test(c.el.style.transform||'')).length + '-deck' + (document.getElementById('deck')?document.getElementById('deck').children.length:-1)) + (lastRestore > r0 ? '' : '-NORESTORE'),
+      lastRestore > r0 && CARDS.every(cc => !cc.docked) &&
+      !CARDS.some(cc => cc.kind === 'note') && allPlaced);
+    ok('peaceObjs', CARDS.filter(cc => cc.kind === 'obj').length >= objCount0);
     ingestHands([]);
     // re-open an orb so the explode test's board still has material after the restore
     const orb3 = CARDS.find(cc => cc.kind === 'folder');
@@ -1539,6 +1566,7 @@ if (Q.has('probe')) setTimeout(async () => {
       ingestHands([]);
     } else ok('ghostnan', true);
   } catch (e) { R.push('FAIL:exception ' + (e && e.message)); }
+  R.push((LOOP_ERRS === 0 ? 'PASS:' : 'FAIL:') + 'noframeerr');
   const pass = R.filter(r => r.startsWith('PASS')).length;
   document.title = `PROBE ${pass}/${R.length} · ` + R.join(' ');
 }, 600);
