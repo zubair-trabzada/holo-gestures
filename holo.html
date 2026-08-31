@@ -146,7 +146,7 @@
 <div id="caption"></div>
 <div id="legend"><b>PINCH</b> grab / tap = open &nbsp;·&nbsp; <b>FLICK</b> throw (off-screen = gone) &nbsp;·&nbsp; <b>2-HAND STRETCH</b> big = read · crush = TL;DR<br>
 <b>TWO PINCHES</b> (apart/together) zoom · twist = rotate &nbsp;·&nbsp; <b>2-HAND STRETCH</b> on a held card: big = read · crush = TL;DR · 3D comes APART<br>
-<b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode &nbsp;·&nbsp; <b>F</b> = EFFECTS (pull · push · ink · clap · tidy)<br>
+<b>PEACE ✌</b> = RESET everything &nbsp;·&nbsp; dock right = shelf &nbsp;·&nbsp; <b>J</b> jarvis mode &nbsp;·&nbsp; <b>F</b> = EFFECTS (pull · palm-hold push · ink · clap · tidy)<br>
 <b>3D PROPS</b> stretch = comes APART · shrink = back together &nbsp;·&nbsp; drop any .glb into props/</div>
 <div id="dbg"></div>
 <div id="perm"><div class="box"><b>HOLO needs your camera</b><br>
@@ -340,7 +340,7 @@ function targetAt(p){
     const d = Math.hypot(p.x - c.x, p.y - c.y);
     // 3D objects are BIG (the hologram disc alone is ~190px wide) — a flat 110px
     // center halo made them ungrabbable off-center (his "objects not working")
-    const r = c.kind === 'obj' ? Math.max(125, 115 * (c.s || 1)) : 110;
+    const r = c.kind === 'obj' ? Math.max(55, (c.rPx || 110) * (c.s || 1) * 1.15) : 110;
     if (d < r && d < bd){ best = c; bd = d; }
   }
   return best;
@@ -375,6 +375,7 @@ function handMetrics(lm){
     tips,                                          // [index, middle, ring, pinky] extension ratios
     pinch: dist(lm[4], lm[8]) / span,
     open: tips.every(t => t > 1.45),
+    openish: tips.every(t => t > 1.32),   // relaxed real-hand open (parity with the galaxy build)
     fist: tips.every(t => t < 1.05),
     point: tips[0] > 1.45 && tips[1] < 1.15 && tips[2] < 1.15 && tips[3] < 1.15,
     peace: tips[0] > 1.45 && tips[1] > 1.45 && tips[2] < 1.15 && tips[3] < 1.15,
@@ -493,11 +494,13 @@ function ingestHands(rawHands){
       if (st.point >= 4){ ink.push({ x: cur.x, y: cur.y, t: now });
         if (ink.length > 700) ink.splice(0, ink.length - 700); }
     } else { if (st.point >= 4) ink.push({ break: true }); st.point = 0; }
-    // REPULSOR: an open palm THRUST at the camera (span balloons fast) blasts
-    // everything near the palm away — a push, where clap is the two-hand scatter
-    if (ADV && !reader.open && m.open && !st.pinch && st.spans.length >= 4 && now - lastPush[i] > 900){
-      const old = st.spans[0];
-      if (now - old.t < 260 && m.span / old.s > 1.32){
+    // REPULSOR: HOLD an open palm up like a stop sign (~0.8s) and everything near
+    // it blasts away. Was a THRUST (span growth) — a motion gesture that depends on
+    // camera distance and basically never fired on a real webcam; the static held
+    // pose is the reliable one (2026-08-31, same law as peace-instead-of-clap).
+    if (ADV && !reader.open && m.openish && !st.pinch){
+      st.pushN = (st.pushN || 0) + 1;
+      if (st.pushN === 24 && now - lastPush[i] > 1500){
         lastPush[i] = now;
         const p = px(m.palm);
         for (const c of CARDS){ const dx = c.x - p.x, dy = c.y - p.y, d = Math.max(50, Math.hypot(dx, dy));
@@ -506,7 +509,7 @@ function ingestHands(rawHands){
         shocks.push({ x: p.x, y: p.y, t: now });
         postState('push', 'repulsor'); jSay('push');
       }
-    }
+    } else st.pushN = 0;
     // READER SCROLL: while the reader is open, an open palm wipes the page —
     // content follows the hand, touch-style (long notes were unreachable by hand)
     if (reader.open && m.open && st.trail.length >= 2){
@@ -890,7 +893,8 @@ async function loadProps(T){
       const title = name.replace(/\.glb$/i, '').replace(/[-_]+/g, ' ').toUpperCase().slice(0, 22);
       CARDS.push({ el: null, kind: 'obj', mesh: wrap, title, full: '',
         x: W*.82 - slot*170, y: H*.78, vx: 0, vy: 0, s: 1, sT: 1, docked: false,
-        spin: { x: 0, y: .006 }, parts, explode: 0, explodeT: 0 });
+        spin: { x: 0, y: .006 }, parts, explode: 0, explodeT: 0,
+        rPx: (170 * (pose.scale || 1)) / 2 });   // half the normalized on-screen size
       slot++;
     } catch (_){}
   }
@@ -1005,7 +1009,7 @@ function drawHud(t){
   // indicator: hovered cards glow via CSS, hovered/held 3D objects get a ring drawn
   // here. Feedback lives on the thing you're about to grab, not on a wandering dot.
   const ringObj = (c, strong) => {
-    const rr = Math.max(120, 112 * (c.s || 1)) + 4 * Math.sin(t / 220);
+    const rr = Math.max(34, (c.rPx || 100) * (c.s || 1) * 1.05) + 3 * Math.sin(t / 220);
     HG.lineWidth = strong ? 3 : 1.8;
     HG.strokeStyle = strong ? 'rgba(157,255,228,.95)' : 'rgba(125,255,217,.55)';
     HG.beginPath(); HG.arc(c.x, c.y, Math.max(1, rr), 0, 7); HG.stroke();
@@ -1440,11 +1444,11 @@ if (Q.has('probe')) setTimeout(async () => {
     for (let k = 0; k <= 8; k++) ingestHands([synthHand(.3 + k*.03, .4, 'point')]);
     ok('ink', ink.filter(p => !p.break).length >= ip0 + 4);
     ingestHands([]);
-    // REPULSOR: open palm thrusts at the camera (span balloons) → radial blast
+    // REPULSOR: a HELD open palm (stop-sign) → radial blast
     const pc = CARDS.find(cc => cc.kind === 'note' && !cc.docked) || CARDS[0];
     pc.x = W*.5 + 120; pc.y = H*.5; pc.tx = pc.ty = null; pc.vx = pc.vy = 0; pc.docked = false;
     const sh1 = shocks.length;
-    for (let k = 0; k <= 6; k++) ingestHands([synthHand(.5, .5, 'open', .07 + k*.008)]);
+    for (let k = 0; k <= 30; k++) ingestHands([synthHand(.5, .5, 'open')]);   // HELD palm
     ok('push', shocks.length > sh1 && pc.vx > 0);
     ingestHands([]);
     // PALM SCROLL: reader open, an open palm wipes the page up/down
