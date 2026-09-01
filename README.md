@@ -1,7 +1,7 @@
-# ✋ HOLO — Control Your Notes With Your Bare Hands
+# ✋ HOLO — Control Your Notes With Your Hands, In The Air
 
 ![HOLO — folder orbs and a real Smithsonian Apollo 11 scan floating over your webcam feed](assets/banner.png)
-*Your notes as floating orbs, a real Apollo 11 capsule scan on the shelf — all controlled by your bare hands.*
+*Your notes as floating orbs, a real Apollo 11 capsule scan on the shelf — all controlled by your hands in mid-air.*
 
 Turn your webcam into an **Iron Man interface for your markdown notes**. Folders float as orbs
 over your own mirrored video. You pinch files out of the air, throw them with real momentum,

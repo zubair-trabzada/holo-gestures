@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HOLO — bare-hand control deck (Jarvis V7 prototype). Stdlib only, port 4890.
+"""HOLO — hand-gesture control deck (Jarvis V7 prototype). Stdlib only, port 4890.
 
 Serves the deck page + the note cards it manipulates. Hand tracking is Google
 MediaPipe (Apache-2.0) loaded from CDN in the page; every gesture on top is ours,
